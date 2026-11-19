@@ -35,10 +35,44 @@
 
   function normalizeDateToIso(str) {
     if (!str) return '';
-    const s = String(str).trim();
+    let s = String(str).trim();
+
+    // Loại bỏ nhiễu OCR sau số ngày: ví dụ "03% 2020", "03* 2020", "03^ 2020", "03~ 2020", "03°% 2020"
+    s = s.replace(/(\d{1,2})[%*~^°º#@$]+(\s*)/g, function (m, d, sp) { return d + sp; });
+
+    // Hỗ trợ ngày mô tả theo thông lệ Điều 3 UCP 600:
+    // Ví dụ: "END OF MAY, 2020" -> ngày cuối tháng (2020-05-31)
+    // "BEGINNING OF MAY, 2020" -> ngày 10 (2020-05-10)
+    // "MIDDLE OF MAY, 2020" -> ngày 20 (2020-05-20)
+    const descMatch = s.match(/\b(END|BEGINNING|MIDDLE)\s+OF\s+([A-Za-z]+),?\s*(20\d{2})\b/i);
+    if (descMatch && MONTHS[descMatch[2].toLowerCase()]) {
+      const year = Number(descMatch[3]);
+      const monthNum = Number(MONTHS[descMatch[2].toLowerCase()]);
+      const pos = descMatch[1].toUpperCase();
+      if (pos === 'END') {
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        return `${year}-${pad2(monthNum)}-${pad2(lastDay)}`;
+      } else if (pos === 'BEGINNING') {
+        return `${year}-${pad2(monthNum)}-10`;
+      } else if (pos === 'MIDDLE') {
+        return `${year}-${pad2(monthNum)}-20`;
+      }
+    }
+
+    // Month DD, YYYY e.g. MAY 03th, 2020 or MAY 03 2020
+    let m = s.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/i);
+    if (m && MONTHS[m[1].toLowerCase()]) {
+      return `${m[3]}-${MONTHS[m[1].toLowerCase()]}-${pad2(m[2])}`;
+    }
+
+    // DD Month YYYY (e.g. 14 November 2026 or 15th Dec, 2026)
+    m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(20\d{2})\b/i);
+    if (m && MONTHS[m[2].toLowerCase()]) {
+      return `${m[3]}-${MONTHS[m[2].toLowerCase()]}-${pad2(m[1])}`;
+    }
 
     // YYYY-MM-DD or YYYY/MM/DD
-    let m = s.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
+    m = s.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
     if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
 
     // DD/MM/YYYY or MM/DD/YYYY
@@ -55,18 +89,6 @@
     // SWIFT YYMMDD (6 chữ số liền nhau, ví dụ 261114)
     m = s.match(/\b(2\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/);
     if (m) return `20${m[1]}-${m[2]}-${m[3]}`;
-
-    // DD Month YYYY (e.g. 14 November 2026 or 15th Dec, 2026)
-    m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(20\d{2})\b/i);
-    if (m && MONTHS[m[2].toLowerCase()]) {
-      return `${m[3]}-${MONTHS[m[2].toLowerCase()]}-${pad2(m[1])}`;
-    }
-
-    // Month DD, YYYY (e.g. November 14, 2026)
-    m = s.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/i);
-    if (m && MONTHS[m[1].toLowerCase()]) {
-      return `${m[3]}-${MONTHS[m[1].toLowerCase()]}-${pad2(m[2])}`;
-    }
 
     return '';
   }
@@ -488,44 +510,98 @@
     ]);
 
     const contractDateRaw = findFirst([
-      /(?:Contract\s*Date|Date\s*of\s*Contract|Dated|Ngày\s*ký|Date)\s*[:\-]?\s*([A-Za-z0-9,\-\/\s]{6,25})/i,
       /31C:\s*(?:Date\s*of\s*Issue)?\s*\n?\s*([0-9\/\-]{6,15})/i,
-      /:31C:(\d{6})/i
+      /:31C:(\d{6})/i,
+      /(?:Contract\s*Date|Date\s*of\s*Contract|Dated|Ngày\s*ký)\s*[:\-]?\s*([^\n;]{6,35})/i,
+      /\bDate\s*[:\-]\s*([^\n;]{6,35})/i
     ]);
     const contractDate = normalizeDateToIso(contractDateRaw);
 
-    const stopPartyKeys = [
-      /^(THE\s+)?(BUYER|APPLICANT|IMPORTER|PURCHASER|BÊN\s*MUA)/i,
-      /^(THE\s+)?(SELLER|BENEFICIARY|EXPORTER|SUPPLIER|BÊN\s*BÁN)/i,
-      /^(\d{2}[A-Z]?:|:\d{2}[A-Z]?:)/i,
-      /^(ARTICLE|SECTION|ĐIỀU|1\.|2\.|3\.|COMMODITY|GOODS|DESCRIPTION|PRICE|AMOUNT|SHIPMENT|PAYMENT)/i
-    ];
-
-    let buyerBlock = findBlock(
-      /^(?:THE\s+)?(?:BUYER|APPLICANT|IMPORTER|PURCHASER|BÊN\s*MUA)(?:\s*\([^)]+\))?\s*[:\-]?/i,
-      stopPartyKeys
-    );
-    if (!buyerBlock.name) {
-      buyerBlock = findBlock(/^(?::?50:\s*(?:Applicant)?)/i, stopPartyKeys);
+    function extractPartyFromBlock(blockText) {
+      const bLines = blockText.split('\n').map(l => l.trim()).filter(Boolean);
+      const cleaned = [];
+      for (const l of bLines) {
+        if (/^(BETWEEN|AND|BÊN\s*BÁN|BÊN\s*MUA)\b/i.test(l) && cleaned.length === 0) {
+          const rest = l.replace(/^(BETWEEN|AND|BÊN\s*BÁN|BÊN\s*MUA)[:\s-]*/i, '').trim();
+          if (rest) cleaned.push(rest);
+          continue;
+        }
+        if (/HEREINAFTER\s+CALLED/i.test(l)) break;
+        if (/^(TEL|FAX|EMAIL|MST|TAX|BANKER|ACCOUNT|SWIFT|REPRESENTED|ATTN)\b/i.test(l)) continue;
+        cleaned.push(l.replace(/^(ADDRESS|ADD|ĐỊA\s*CHỈ)\s*[:\-]?\s*/i, '').trim());
+      }
+      const name = (cleaned[0] || '').trim();
+      const address = cleaned.slice(1).join(', ').trim();
+      return { name, address };
     }
 
-    let sellerBlock = findBlock(
-      /^(?:THE\s+)?(?:SELLER|BENEFICIARY|EXPORTER|SUPPLIER|BÊN\s*BÁN)(?:\s*\([^)]+\))?\s*[:\-]?/i,
-      stopPartyKeys
-    );
+    let buyerBlock = { name: '', address: '' };
+    let sellerBlock = { name: '', address: '' };
+
+    // 1. Nhận diện cấu trúc hợp đồng chuẩn quốc tế: BETWEEN ... SELLER AND ... BUYER
+    const preambleMatch = text.match(/BETWEEN\s+([\s\S]+?)\s+AND\s+([\s\S]+?)(?=\bIT IS MUTUALLY|\bARTICLE\b|\b1\.\s*COMMODITY|\b1\.\s*GOODS|\bNOW THEREFORE)/i);
+    if (preambleMatch) {
+      const block1 = preambleMatch[1];
+      const block2 = preambleMatch[2];
+      const p1 = extractPartyFromBlock(block1);
+      const p2 = extractPartyFromBlock(block2);
+      if (/SELLER|BENEFICIARY|EXPORTER|BÊN\s*BÁN/i.test(block1)) {
+        sellerBlock = p1;
+        buyerBlock = p2;
+      } else if (/BUYER|APPLICANT|IMPORTER|BÊN\s*MUA/i.test(block1)) {
+        buyerBlock = p1;
+        sellerBlock = p2;
+      } else {
+        sellerBlock = p1;
+        buyerBlock = p2;
+      }
+    }
+
+    // 2. Dự phòng các định dạng hợp đồng dạng BUYER: ... / SELLER: ...
+    const stopPartyKeys = [
+      /^(THE\s+)?(BUYER|APPLICANT|IMPORTER|PURCHASER|BÊN\s*MUA)\b/i,
+      /^(THE\s+)?(SELLER|BENEFICIARY|EXPORTER|SUPPLIER|BÊN\s*BÁN)\b/i,
+      /^(\d{2}[A-Z]?:|:\d{2}[A-Z]?:)/i,
+      /^(ARTICLE|SECTION|ĐIỀU|1\.|2\.|3\.|4\.|5\.|NOTICE|PACKING|PAYMENT|DOCUMENTS|SHIPMENT)/i
+    ];
+
+    if (!buyerBlock.name) {
+      buyerBlock = findBlock(
+        /^(?:THE\s+)?(?:BUYER|APPLICANT|IMPORTER|PURCHASER|BÊN\s*MUA)(?:\s*\([^)]+\))?\s*[:\-]?/i,
+        stopPartyKeys
+      );
+      if (!buyerBlock.name) {
+        buyerBlock = findBlock(/^(?::?50:\s*(?:Applicant)?)/i, stopPartyKeys);
+      }
+    }
+
     if (!sellerBlock.name) {
-      sellerBlock = findBlock(/^(?::?59:\s*(?:Beneficiary(?:\s*-\s*Name\s*&\s*Address)?)?)/i, stopPartyKeys);
+      const idx = lines.findIndex(l => /^(?:THE\s+)?(?:SELLER|BENEFICIARY|EXPORTER|SUPPLIER|BÊN\s*BÁN)(?:\s*\([^)]+\))?\s*[:\-]?/i.test(l) && !/SHOULD|SHALL|MUST|WILL|AGREES|UNDERTAKES|INFORM/i.test(l));
+      if (idx !== -1) {
+        sellerBlock = findBlock(
+          /^(?:THE\s+)?(?:SELLER|BENEFICIARY|EXPORTER|SUPPLIER|BÊN\s*BÁN)(?:\s*\([^)]+\))?\s*[:\-]?/i,
+          stopPartyKeys
+        );
+      }
+      if (!sellerBlock.name) {
+        sellerBlock = findBlock(/^(?::?59:\s*(?:Beneficiary(?:\s*-\s*Name\s*&\s*Address)?)?)/i, stopPartyKeys);
+      }
     }
 
     // Tiền tệ & Tổng trị giá
     let currency = 'USD';
     let amount = '';
+    const totalInCurrencyMatch = text.match(/TOTAL\s+IN\s+([A-Z]{3})\s*[:\-]?\s*(?:[\d]+\s*\|\s*)?([\d,.]+)/i);
     const fin32BMatch = text.match(/32B:\s*Currency\s*Code,\s*Amount[\s\S]{0,60}?Currency\s*:\s*([A-Z]{3})[\s\S]{0,60}?Amount\s*:\s*([\d,.]+)/i)
       || text.match(/:32B:([A-Z]{3})([\d,.]+)/i);
-    const amountMatch = fin32BMatch
+    const amountMatch = totalInCurrencyMatch
+      || fin32BMatch
       || text.match(/(?:Total\s*(?:Contract\s*)?(?:Value|Amount)|Contract\s*Amount|Total\s*Value|Grand\s*Total|Tổng\s*giá\s*trị)\s*[:\-]?\s*(USD|EUR|JPY|CNY|GBP|AUD|SGD|VND)?\s*([\d,.]+)\s*(USD|EUR|JPY|CNY|GBP|AUD|SGD|VND)?/i)
       || text.match(/\b(USD|EUR|JPY|CNY|GBP)\s*([\d,]+(?:\.\d{1,2})?)\b/i);
-    if (amountMatch) {
+    if (totalInCurrencyMatch) {
+      currency = totalInCurrencyMatch[1].toUpperCase();
+      amount = totalInCurrencyMatch[2].replace(/,/g, '');
+    } else if (amountMatch) {
       currency = (amountMatch[1] || amountMatch[3] || 'USD').toUpperCase();
       let rawAmt = String(amountMatch[2]);
       if (/^\d{1,3}(\.\d{3})+,\d{2}$/.test(rawAmt)) {
@@ -552,9 +628,21 @@
       toleranceMinus = tolMatch[1];
     }
 
-    // Incoterms
-    const incotermMatch = text.match(/\b(EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DPU|DDP)\b(?:\s+Incoterms\s*(?:2020|2010)?)?/i);
-    const incoterms = incotermMatch ? incotermMatch[1].toUpperCase() : 'CIF';
+    // Incoterms: Loại bỏ bẫy SPECIFICATION chứa từ CIF
+    const sanitizedForInco = text.replace(/SPE\s*CIF\s*ICATION/gi, 'SPECIFICATION');
+    let incoterms = 'CIF';
+    if (/\b(?:EX[\s-]WORKS?|EXW)\b/i.test(sanitizedForInco)) {
+      incoterms = 'EXW';
+    } else if (/\b(?:FOB|FREE\s+ON\s+BOARD)\b/i.test(sanitizedForInco)) {
+      incoterms = 'FOB';
+    } else if (/\b(?:CFR|C&F|COST\s+AND\s+FREIGHT)\b/i.test(sanitizedForInco)) {
+      incoterms = 'CFR';
+    } else if (/\b(?:CIF|COST,?\s*INSURANCE\s*(?:AND|&)\s*FREIGHT)\b/i.test(sanitizedForInco)) {
+      incoterms = 'CIF';
+    } else if (/\b(FCA|FAS|CPT|CIP|DAP|DPU|DDP)\b/i.test(sanitizedForInco)) {
+      const m = sanitizedForInco.match(/\b(FCA|FAS|CPT|CIP|DAP|DPU|DDP)\b/i);
+      if (m) incoterms = m[1].toUpperCase();
+    }
 
     // Cảng xếp / Cảng dỡ
     const portOfLoading = findFirst([
@@ -567,7 +655,7 @@
     const portOfDischarge = findFirst([
       /44F:\s*Port\s*of\s*Disch(?:a)?rge[^\n]*\n\s*([^\n]{3,80})/i,
       /:44F:([^\n]{3,80})/i,
-      /(?:Port\s*of\s*Discharge|Port\s*of\s*Destination|Discharge\s*Port|POD|Cảng\s*dỡ\s*hàng|Cảng\s*đến)\s*[:\-]?\s*([^\n|;]{3,80})/i,
+      /(?:Destination\s*Port|Port\s*of\s*Destination|Port\s*of\s*Discharge|Discharge\s*Port|POD|Cảng\s*dỡ\s*hàng|Cảng\s*đến)\s*[:\-]?\s*([^\n|;]{3,80})/i,
       /(?:To)\s*[:]\s*([^\n|;]{3,80})/i
     ]).replace(/\.$/, '').trim();
 
@@ -616,14 +704,35 @@
       draftTenor = 'AT SIGHT';
     }
 
-    // Ngân hàng thông báo & SWIFT Code
-    const receiverBlockMatch = text.match(/Receiver\s*:\s*([A-Z]{6}[A-Z0-9]{2,5})\s*\n\s*([^\n]{3,90})/i);
-    const advisingBankName = (receiverBlockMatch && receiverBlockMatch[2] ? receiverBlockMatch[2].trim() : '') || findFirst([
-      /(?:Advising\s*Bank|Beneficiary'?s?\s*Bank|Seller'?s?\s*Bank|Ngân\s*hàng\s*bên\s*bán)\s*[:\-]?\s*([^\n]{4,100})/i
-    ]);
+    // Ngân hàng thông báo & SWIFT Code (Ưu tiên ngân hàng của bên Bán / Người thụ hưởng)
+    let advisingBankName = '';
+    let advisingBankBic = '';
 
-    const swiftMatch = text.match(/(?:SWIFT(?:\s*Code|\s*BIC)?|BIC)\s*[:\-]?\s*([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/i);
-    const advisingBankBic = (receiverBlockMatch && receiverBlockMatch[1] ? receiverBlockMatch[1].toUpperCase() : '') || (swiftMatch ? swiftMatch[1].toUpperCase() : '');
+    // 1. Tìm trong điều khoản 4. PAYMENT hoặc BANKER của Người thụ hưởng
+    const payClause = findFirst([
+      /(?:4\.\s*PAYMENT|PAYMENT(?:\s*TERMS?)?)\s*[:\-]?\s*([\s\S]{10,500}?)(?=\n\s*(?:5\.|DOCUMENTS|WARRANTY|ARBITRATION)|$)/i
+    ]);
+    if (payClause) {
+      const bMatch = payClause.match(/BANKER\s*[:\-]?\s*([^\n,]{3,80}(?:,[^\n]{3,80})?)/i);
+      if (bMatch) advisingBankName = bMatch[1].replace(/,\s*$/, '').trim();
+      const sMatch = payClause.match(/(?:SWIFT(?:\s*CODE)?|BIC)\s*[:\-]?\s*([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/i);
+      if (sMatch) advisingBankBic = sMatch[1].toUpperCase();
+    }
+
+    // 2. Dự phòng: Receiver SWIFT trong điện FIN hoặc tìm kiếm thông thường
+    if (!advisingBankBic) {
+      const receiverBlockMatch = text.match(/Receiver\s*:\s*([A-Z]{6}[A-Z0-9]{2,5})\s*\n\s*([^\n]{3,90})/i);
+      if (receiverBlockMatch) {
+        advisingBankBic = receiverBlockMatch[1].toUpperCase();
+        advisingBankName = receiverBlockMatch[2].trim();
+      } else {
+        advisingBankName = findFirst([
+          /(?:Advising\s*Bank|Beneficiary'?s?\s*Bank|Seller'?s?\s*Bank|Ngân\s*hàng\s*bên\s*bán)\s*[:\-]?\s*([^\n]{4,100})/i
+        ]);
+        const swiftMatch = text.match(/(?:SWIFT(?:\s*Code|\s*BIC)?|BIC)\s*[:\-]?\s*([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/i);
+        if (swiftMatch) advisingBankBic = swiftMatch[1].toUpperCase();
+      }
+    }
 
     const presMatch = text.match(/within\s*(\d{1,2})\s*days?\s*(?:after|from)\s*(?:the\s*)?(?:date\s*of\s*)?(?:shipment|B\/L)/i);
     const presentationDays = presMatch ? presMatch[1] : '';

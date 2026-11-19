@@ -66,6 +66,54 @@ async function runTests() {
   assert.strictEqual(parsedFin.tolerancePlus, '10');
   assert.strictEqual(parsedFin.incoterms, 'CFR');
   assert.strictEqual(parsedFin.latestShipmentDate, '2024-06-30');
+  // Kiểm tra bóc tách Hợp đồng thực tế cấu trúc BETWEEN/AND, EX-WORK, DESTINATION PORT, END OF MAY
+  const mtuContractSample = `
+TRUNG TAM LOGISTICS XNK QUOC TE
+SALES CONTRACT
+NO : 46-16/HTCL-MTU
+DATE : MAY 03th, 2020
+
+BETWEEN
+MTU ASIA PTE LTD
+10 TUKANG INNOVATION DRIVE, SINGAPORE 618302.
+BANKER: DEUTSCHE BANK AG, SINGAPORE BRANCH
+HEREINAFTER CALLED "THE SELLER".
+
+AND
+THUAN PHAT IMPORT EXPORT SERVICE CO. LTD
+E6 ROAD 19, KP2, BINH AN WARD, DISTRICT 2, HO CHI MINH CITY, VIET NAM
+BANKER: VIETCOMBANK - CN NAM SAI GON, TPHCM
+SWIFT CODE: BFTVVNVX018
+HEREINAFTER CALLED "THE BUYER".
+
+1. COMMODITY- SPECIFICATION-QUANTITY-PRICE:
+DESCRIPTION: MTU DIESEL ENGINES AND STANDARD SPARE PARTS.
+TOTAL IN EUR : 48,410
+THESE PRICES ARE UNDERSTOOD EX-WORK MTU ASIA PTE LTD IN SINGAPORE, INCOTERMS 2010 TO BE REFERRED.
+
+2. SHIPMENT:
+2.1. PARTIAL SHIPMENT : NOT ALLOWED.
+2.2. TRANSHIPMENT : ALLOWED.
+2.3. TIME OF SHIPMENT : END OF MAY, 2020
+2.4. LOADING PORT : ANY PORT IN SINGAPORE.
+2.5. DESTINATION PORT : ANY PORT IN VIETNAM.
+
+4. PAYMENT: 100% INVOICE VALUE BY AN IRREVOCABLE LETTER OF CREDIT AT SIGHT IN FAVOR OF MTU ASIA PTE LTD.
+BANKER : DEUTSCHE BANK AG, SINGAPORE BRANCH
+SWIFT CODE: DEUTSGSGXXX
+`;
+  const parsedMtu = Parser.parseSalesContractText(mtuContractSample).extracted;
+  assert.strictEqual(parsedMtu.contractNo, '46-16/HTCL-MTU');
+  assert.strictEqual(parsedMtu.contractDate, '2020-05-03');
+  assert.strictEqual(parsedMtu.applicantName, 'THUAN PHAT IMPORT EXPORT SERVICE CO. LTD');
+  assert.strictEqual(parsedMtu.beneficiaryName, 'MTU ASIA PTE LTD');
+  assert.strictEqual(parsedMtu.currency, 'EUR');
+  assert.strictEqual(parsedMtu.amount, '48410');
+  assert.strictEqual(parsedMtu.incoterms, 'EXW');
+  assert.strictEqual(parsedMtu.portOfLoading, 'ANY PORT IN SINGAPORE');
+  assert.strictEqual(parsedMtu.portOfDischarge, 'ANY PORT IN VIETNAM');
+  assert.strictEqual(parsedMtu.latestShipmentDate, '2020-05-31');
+  assert.strictEqual(parsedMtu.advisingBankBic, 'DEUTSGSGXXX');
   console.log('[PASS] 2. Bộ bóc tách Hợp đồng Ngoại thương & OCR Bản in FIN 700 -> Dữ liệu MT700 chính xác');
 
   // 3. Kiểm tra sinh điều khoản mặc định và xác thực UCP 600
