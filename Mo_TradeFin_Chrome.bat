@@ -1,10 +1,10 @@
 @echo off
-title TradeFin Import L/C Simulator (Port 3005)
+title UTH Learn L/C Simulator (Port 3005)
 
 echo Dang kiem tra va khoi chay Server Node.js tai port 3005...
 netstat -ano | findstr :3005 >nul
 if %ERRORLEVEL% NEQ 0 (
-    start "TradeFin_LC_Server" /min cmd /c "cd /d D:\Project_Phần mềm giả lập LOG_LC && node server.js"
+    start "UTH_LC_Server" /min cmd /c "cd /d %~dp0 && node server.js"
     timeout /t 2 /nobreak >nul
 )
 
