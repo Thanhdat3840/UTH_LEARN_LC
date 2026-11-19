@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UTH Learn L/C — Hệ thống Thực hành Mở & Quản trị Thư tín dụng Nhập khẩu (UCP 600 / SWIFT MT700)</title>
+  <link rel="stylesheet" href="styles.css?v=20261119_ocr2" />
+  <script src="vendor/mammoth.browser.min.js"></script>
+  <script src="vendor/pdf.min.js"></script>
+  <script src="vendor/tesseract/tesseract.min.js"></script>
+</head>
+<body class="role-corporate">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo-box">
+        <img src="images/logo_uth.png" alt="UTH Logo" class="brand-logo-img" />
+      </div>
+      <div class="brand-title">
+        <h1>UTH Learn L/C</h1>
+        <p>Hệ thống Thực hành Nghiệp vụ Mở & Quản trị L/C — Chuẩn UCP 600 · ISBP 745 · Incoterms 2020 · SWIFT MT700 / MT707</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" class="btn btn-ghost-light btn-sm" id="btnExportJson">Lưu hồ sơ (.json)</button>
+      <label class="btn btn-ghost-light btn-sm" style="cursor:pointer;">
+        Mở hồ sơ (.json)
+        <input type="file" id="inputImportJson" accept=".json" style="display:none;" />
+      </label>
+      <button type="button" class="btn btn-ghost-light btn-sm" id="btnResetAll">Tạo hồ sơ trắng</button>
+    </div>
+  </header>
+
+  <nav class="workflow-bar">
+    <div class="stepper" id="stepperNav">
+      <button type="button" class="step-btn active" data-stage="1">
+        <span class="step-num">1</span>
+        <span class="step-meta">
+          <span class="step-title">Hợp đồng & Auto-fill</span>
+          <span class="step-sub">Tải Sales Contract & bóc tách MT700</span>
+        </span>
+      </button>
+      <button type="button" class="step-btn" data-stage="2">
+        <span class="step-num">2</span>
+        <span class="step-meta">
+          <span class="step-title">Ký quỹ & Soi lỗi UCP 600</span>
+          <span class="step-sub">46A, 47A, Tài chính & Cảnh báo rủi ro</span>
+        </span>
+      </button>
+      <button type="button" class="step-btn" data-stage="3">
+        <span class="step-num">3</span>
+        <span class="step-meta">
+          <span class="step-title">Đơn Mở L/C & Điện MT700</span>
+          <span class="step-sub">Mẫu Ngân hàng VN & SWIFT MT700</span>
+        </span>
+      </button>
+      <button type="button" class="step-btn" data-stage="4">
+        <span class="step-num">4</span>
+        <span class="step-meta">
+          <span class="step-title">Tu chỉnh MT707 & Bảo lãnh</span>
+          <span class="step-sub">Amendment & Shipping Guarantee</span>
+        </span>
+      </button>
+      <button type="button" class="step-btn" data-stage="5">
+        <span class="step-num">5</span>
+        <span class="step-meta">
+          <span class="step-title">Kiểm tra Chứng từ Hàng về</span>
+          <span class="step-sub">Soi lỗi Bất hợp lệ (Discrepancy)</span>
+        </span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Live Summary Bar -->
+    <section class="lc-summary-strip" id="lcSummaryStrip">
+      <div class="summary-tile">
+        <div class="label">Số L/C (:20:)</div>
+        <div class="val" id="sumLcNumber">—</div>
+      </div>
+      <div class="summary-tile">
+        <div class="label">Trạng thái Hồ sơ</div>
+        <div class="val" id="sumStatus">Đang soạn thảo</div>
+      </div>
+      <div class="summary-tile">
+        <div class="label">Trị giá hiệu lực (:32B:)</div>
+        <div class="val" id="sumAmount">—</div>
+      </div>
+      <div class="summary-tile">
+        <div class="label">Incoterms & Tuyến cảng</div>
+        <div class="val" id="sumRoute">—</div>
+      </div>
+      <div class="summary-tile">
+        <div class="label">Hạn giao (:44C:) / Hết hạn (:31D:)</div>
+        <div class="val" id="sumDates">—</div>
+      </div>
+      <div class="summary-tile">
+        <div class="label">Ký quỹ phong tỏa</div>
+        <div class="val" id="sumDeposit">—</div>
+      </div>
+    </section>
+
+    <!-- ==================== GIAI ĐOẠN 1 ==================== -->
+    <section class="stage-panel active" id="stage-1">
+      <div class="split-grid">
+        <!-- Cột trái: Upload & Xem Hợp đồng gốc -->
+        <div class="card">
+          <div class="card-header">
+            <h3>1A. Tài liệu Hợp đồng Ngoại thương (Sales Contract)</h3>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <select id="selectSampleContract" style="width:auto; min-width:210px; font-size:12.5px; padding:5px 8px;">
+                <option value="">-- Tải file Hợp đồng mẫu có sẵn --</option>
+              </select>
+              <button type="button" class="btn btn-outline btn-sm" id="btnLoadSampleContract">Nạp mẫu</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="dropzone" id="contractDropzone">
+              <div style="font-weight:700; color:var(--navy-900); margin-bottom:4px;">
+                📋 Nhấn <kbd style="background:#00565f; color:#fff; padding:1px 6px; border-radius:4px; font-size:12px;">Ctrl + V</kbd> để dán nhiều ảnh chụp màn hình, hoặc kéo thả / bấm chọn nhiều file (.png, .jpg, .docx, .pdf, .txt)
+              </div>
+              <div style="font-size:12px; color:var(--slate-600);">
+                Các ảnh/file được thêm vào Hàng đợi bên dưới (chưa phân tích ngay). Bạn có thể thoải mái dán thêm trang hoặc bấm nút <b>✕</b> ở góc phải trên để xóa ảnh thừa, sau đó bấm <b>"Phân tích & Auto-fill"</b>.
+              </div>
+              <input type="file" id="contractFileInput" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" multiple style="display:none;" />
+            </div>
+
+            <!-- Hàng đợi nhiều ảnh / file chờ phân tích (Stage 1A) -->
+            <div class="paste-queue-box" id="stage1QueueBox" style="display:none;">
+              <div class="paste-queue-header">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span class="badge badge-info" id="stage1QueueCountBadge">0 trang ảnh/file chờ phân tích</span>
+                  <span style="font-size:11.5px; color:var(--slate-600);" id="stage1QueueStatusText">Nhấn Ctrl+V để dán thêm ảnh tiếp theo hoặc bấm ✕ trên góc ảnh để bỏ bớt trước khi phân tích.</span>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-outline btn-sm" id="btnClearStage1Queue">Xóa hết hàng đợi</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="btnAnalyzeStage1Queue">🔍 Phân tích & Auto-fill các trang đã chọn</button>
+                </div>
+              </div>
+              <div class="paste-queue-grid" id="stage1QueueGrid"></div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;">
+              <span style="font-size:12px; font-weight:700; color:var(--slate-700);">
+                Nội dung Hợp đồng gốc (Hoặc dán trực tiếp văn bản vào khung dưới để Auto-fill):
+              </span>
+              <button type="button" class="btn btn-primary btn-sm" id="btnParseContractText">Phân tích & Auto-fill lại</button>
+            </div>
+
+            <textarea id="rawContractInput" rows="7" placeholder="Dán văn bản Hợp đồng ngoại thương vào đây nếu không tải file..."></textarea>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0 6px;">
+              <span style="font-size:12px; font-weight:700; color:var(--slate-700);">Bản xem đối chiếu (Highlight dữ liệu đã bóc tách):</span>
+              <span class="badge badge-info" id="parseStatsBadge">Chưa nạp hợp đồng</span>
+            </div>
+            <div class="contract-viewer" id="contractHighlightViewer">Chưa có nội dung hợp đồng. Hãy tải lên file .docx/.pdf/.txt của bạn hoặc nạp một hợp đồng mẫu ở góc trên.</div>
+          </div>
+        </div>
+
+        <!-- Cột phải: Biểu mẫu Đơn mở L/C đã Auto-fill -->
+        <div class="card">
+          <div class="card-header">
+            <h3>1B. Đơn Đề nghị Mở L/C (Dành cho Doanh nghiệp — Applicant)</h3>
+            <span class="badge badge-pass" id="autoFillNote">Các ô nền xanh ngọc là dữ liệu được Auto-fill</span>
+          </div>
+          <div class="card-body">
+            <!-- Thanh trạng thái Góc độ Doanh nghiệp & Xem trước MT700 -->
+            <div class="role-switcher-bar">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span class="badge badge-info" style="font-size:12px; padding:4px 10px;">Góc độ Doanh nghiệp (Đơn mở L/C)</span>
+                <span style="font-size:12px; color:#475569;">Doanh nghiệp kê khai thông tin thương mại; các chỉ tiêu định danh ngân hàng sẽ được hệ thống tự động cấp.</span>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="btnOpenRawSwiftModal">Xem trước Điện SWIFT MT700 thô</button>
+            </div>
+
+            <!-- Hộp cảnh báo rủi ro nghiệp vụ thông minh Incoterms / UCP 600 -->
+            <div id="incotermsRiskAlertBox" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:12.5px; border-left:4px solid #f59e0b; background:#fffbeb; color:#92400e;">
+              <div style="font-weight:700; display:flex; align-items:center; gap:6px;">
+                <span>⚠️ CẢNH BÁO RỦI RO NGHIỆP VỤ INCOTERMS 2020:</span>
+              </div>
+              <div id="incotermsRiskAlertText" style="margin-top:3px; line-height:1.45;"></div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>
+                  <span>Ngân hàng Phát hành (Issuing Bank)</span>
+                </label>
+                <select id="issuingBankCode">
+                  <option value="VCB">Vietcombank — VCB (BFTVVNVX)</option>
+                  <option value="BIDV">BIDV (BIDVVNVX)</option>
+                  <option value="VTB">VietinBank (ICBVVNVX)</option>
+                  <option value="TCB">Techcombank (VTCBVNVX)</option>
+                  <option value="ACB">ACB — Á Châu (ASCBVNVX)</option>
+                  <option value="MB">MB Bank — Quân Đội (MSCBVNVX)</option>
+                  <option value="STB">Sacombank (SGTTVNVX)</option>
+                  <option value="VPB">VPBank (VPBKVNVX)</option>
+                  <option value="EIB">Eximbank — Xuất Nhập Khẩu (EBVIVNVX)</option>
+                  <option value="OTHER">Ngân hàng khác (Tự nhập tên & SWIFT)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Số Hợp đồng Ngoại thương</span>
+                </label>
+                <input type="text" id="contractNo" placeholder="VD: SC-2026-VNJP-088" />
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Ngày ký Hợp đồng</span>
+                </label>
+                <input type="date" id="contractDate" />
+              </div>
+            </div>
+
+            <!-- Khối nhập thông tin Ngân hàng khác (hiện khi chọn OTHER) -->
+            <div id="customBankFields" style="display:none; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+              <div style="font-size:12px; font-weight:700; color:#0f223d; margin-bottom:8px;">Thông tin Ngân hàng Phát hành tùy chỉnh:</div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label>Tên Ngân hàng (Tiếng Việt / Tiếng Anh)</label>
+                  <input type="text" id="customBankName" placeholder="VD: NGÂN HÀNG TMCP HÀNG HẢI VIỆT NAM (MSB)" />
+                </div>
+                <div class="form-group">
+                  <label>Mã SWIFT BIC (8 hoặc 11 ký tự)</label>
+                  <input type="text" id="customBankBic" placeholder="VD: MCOBVNVXXXX" />
+                </div>
+                <div class="form-group">
+                  <label>Chi nhánh phát hành</label>
+                  <input type="text" id="customBankBranch" placeholder="VD: CHI NHÁNH TP. HỒ CHÍ MINH" />
+                </div>
+                <div class="form-group">
+                  <label>Địa chỉ Ngân hàng</label>
+                  <input type="text" id="customBankAddress" placeholder="Số nhà, đường, quận/huyện, tỉnh/thành..." />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>
+                  <span>Số hiệu L/C</span>
+                  <span class="swift-tag swift-tag-indicator">:20:
+                    <span class="tooltip-wrap" data-tooltip=":20:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="lcNumber" value="" placeholder="Ngân hàng tự cấp khi phát hành" readonly disabled class="input-locked-corporate" />
+                <div class="charset-warning-box" id="warnCharset_lcNumber"></div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Ngày phát hành dự kiến</span>
+                  <span class="swift-tag swift-tag-indicator">:31C:
+                    <span class="tooltip-wrap" data-tooltip=":31C:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="date" id="issueDate" />
+                <div class="date-error-tooltip" id="errorTooltip_issueDate" style="display:none;"></div>
+                <div class="swift-date-hint swift-tag-indicator" id="hintSwift_issueDate">SWIFT: —</div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Loại L/C</span>
+                  <span class="swift-tag swift-tag-indicator">:40A:
+                    <span class="tooltip-wrap" data-tooltip=":40A:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <select id="form40A">
+                  <option value="IRREVOCABLE">IRREVOCABLE (Không hủy ngang)</option>
+                  <option value="IRREVOCABLE TRANSFERABLE">IRREVOCABLE TRANSFERABLE</option>
+                  <option value="IRREVOCABLE STANDBY">IRREVOCABLE STANDBY</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>
+                  <span>Người mở L/C (Applicant)</span>
+                  <span class="swift-tag swift-tag-indicator">:50:
+                    <span class="tooltip-wrap" data-tooltip=":50:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="applicantName" placeholder="Tên công ty nhập khẩu..." />
+                <input type="text" id="applicantAddress" placeholder="Địa chỉ công ty nhập khẩu..." style="margin-top:4px;" />
+                <div class="char-counter" id="counter_applicant">0 / 4 dòng (tối đa 35 kt/dòng)</div>
+                <div class="charset-warning-box" id="warnCharset_applicant"></div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Người thụ hưởng (Beneficiary)</span>
+                  <span class="swift-tag swift-tag-indicator">:59:
+                    <span class="tooltip-wrap" data-tooltip=":59:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="beneficiaryName" placeholder="Tên công ty xuất khẩu..." />
+                <input type="text" id="beneficiaryAddress" placeholder="Địa chỉ công ty xuất khẩu..." style="margin-top:4px;" />
+                <div class="char-counter" id="counter_beneficiary">0 / 4 dòng (tối đa 35 kt/dòng)</div>
+                <div class="charset-warning-box" id="warnCharset_beneficiary"></div>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>
+                  <span>Ngân hàng Thông báo (Advising Bank)</span>
+                  <span class="swift-tag swift-tag-indicator">:57A:
+                    <span class="tooltip-wrap" data-tooltip=":57A:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="advisingBankName" placeholder="Tên ngân hàng bên bán..." />
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Mã SWIFT BIC Ngân hàng thông báo</span>
+                  <span class="swift-tag swift-tag-indicator">:57A:</span>
+                </label>
+                <input type="text" id="advisingBankBic" placeholder="VD: SMBCJPJTXXX" />
+                <div class="charset-warning-box" id="warnCharset_advisingBankBic"></div>
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>
+                  <span>Loại tiền & Số tiền L/C</span>
+                  <span class="swift-tag swift-tag-indicator">:32B:
+                    <span class="tooltip-wrap" data-tooltip=":32B:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <div style="display:flex; gap:6px;">
+                  <select id="currency" style="width:95px;">
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="JPY">JPY</option>
+                    <option value="CNY">CNY</option>
+                    <option value="GBP">GBP</option>
+                  </select>
+                  <input type="text" id="amountDisplay" placeholder="125,000.00" style="font-weight:700;" />
+                  <input type="hidden" id="amount" value="125000" />
+                </div>
+                <div style="font-size:11px; color:#64748b; margin-top:2px;" class="swift-tag-indicator" id="amountSwiftFormat">SWIFT: USD125000,00</div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Dung sai (+% / -%)</span>
+                  <span class="swift-tag swift-tag-indicator">:39A:
+                    <span class="tooltip-wrap" data-tooltip=":39A:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input type="number" id="tolerancePlus" value="0" min="0" max="50" />
+                  <span>/</span>
+                  <input type="number" id="toleranceMinus" value="0" min="0" max="50" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Incoterms 2020</span>
+                  <span class="swift-tag-indicator" style="font-size:11px; color:#64748b; font-style:italic;">(Nối vào :45A:)</span>
+                </label>
+                <select id="incoterms">
+                  <option value="CIF">CIF — Tiền hàng, Bảo hiểm & Cước</option>
+                  <option value="FOB">FOB — Giao trên tàu (Cước trả sau)</option>
+                  <option value="CFR">CFR — Tiền hàng & Cước biển</option>
+                  <option value="CIP">CIP — Cước & Bảo hiểm trả tới</option>
+                  <option value="CPT">CPT — Cước phí trả tới</option>
+                  <option value="FCA">FCA — Giao cho người chuyên chở</option>
+                  <option value="EXW">EXW — Giao tại xưởng (Nhiều rủi ro L/C)</option>
+                  <option value="DAP">DAP — Giao tại nơi đến</option>
+                  <option value="DDP">DDP — Giao đã nộp thuế</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label>
+                  <span>Cảng xếp hàng (Port of Loading)</span>
+                  <span class="swift-tag swift-tag-indicator">:44E:
+                    <span class="tooltip-wrap" data-tooltip=":44E:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="portOfLoading" maxlength="65" placeholder="VD: OSAKA PORT, JAPAN" />
+                <div class="char-counter" id="counter_portOfLoading">0 / 65 ký tự</div>
+                <div class="charset-warning-box" id="warnCharset_portOfLoading"></div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Cảng dỡ hàng (Port of Discharge)</span>
+                  <span class="swift-tag swift-tag-indicator">:44F:
+                    <span class="tooltip-wrap" data-tooltip=":44F:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="portOfDischarge" maxlength="65" placeholder="VD: CAT LAI PORT, HO CHI MINH CITY, VIETNAM" />
+                <div class="char-counter" id="counter_portOfDischarge">0 / 65 ký tự</div>
+                <div class="charset-warning-box" id="warnCharset_portOfDischarge"></div>
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>
+                  <span>Ngày giao hàng muộn nhất</span>
+                  <span class="swift-tag swift-tag-indicator">:44C:
+                    <span class="tooltip-wrap" data-tooltip=":44C:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="date" id="latestShipmentDate" />
+                <div class="date-error-tooltip" id="errorTooltip_latestShipmentDate" style="display:none;"></div>
+                <div class="swift-date-hint swift-tag-indicator" id="hintSwift_latestShipmentDate">SWIFT: —</div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Ngày hết hạn L/C</span>
+                  <span class="swift-tag swift-tag-indicator">:31D:
+                    <span class="tooltip-wrap" data-tooltip=":31D:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="date" id="expiryDate" />
+                <div class="date-smart-hint" id="smartHint_expiryDate" style="display:none;"></div>
+                <div class="date-error-tooltip" id="errorTooltip_expiryDate" style="display:none;"></div>
+                <div class="swift-date-hint swift-tag-indicator" id="hintSwift_expiryDate">SWIFT: —</div>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Nơi hết hạn L/C</span>
+                  <span class="swift-tag swift-tag-indicator">:31D:</span>
+                </label>
+                <select id="expiryPlace">
+                  <option value="AT BENEFICIARY COUNTRY">Tại nước người thụ hưởng (At Beneficiary Country)</option>
+                  <option value="AT APPLICANT COUNTRY">Tại nước người mở L/C (At Applicant Country)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>
+                  <span>Giao hàng từng phần</span>
+                  <span class="swift-tag swift-tag-indicator">:43P:
+                    <span class="tooltip-wrap" data-tooltip=":43P:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <select id="partialShipment">
+                  <option value="NOT ALLOWED">NOT ALLOWED (Không cho phép)</option>
+                  <option value="ALLOWED">ALLOWED (Cho phép giao nhiều lần)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Chuyển tải</span>
+                  <span class="swift-tag swift-tag-indicator">:43T:
+                    <span class="tooltip-wrap" data-tooltip=":43T:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <select id="transhipment">
+                  <option value="ALLOWED">ALLOWED (Cho phép chuyển tàu)</option>
+                  <option value="NOT ALLOWED">NOT ALLOWED (Không cho phép)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>
+                  <span>Thanh toán bằng</span>
+                  <span class="swift-tag swift-tag-indicator">:41A:
+                    <span class="tooltip-wrap" data-tooltip=":41A:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <select id="availableBy">
+                  <option value="BY PAYMENT">BY PAYMENT (Trả ngay At Sight)</option>
+                  <option value="BY ACCEPTANCE">BY ACCEPTANCE (Chấp nhận hối phiếu trả chậm)</option>
+                  <option value="BY DEF PAYMENT">BY DEF PAYMENT (Trả chậm không hối phiếu)</option>
+                  <option value="BY NEGOTIATION">BY NEGOTIATION (Thương lượng chiết khấu)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-2" id="paymentTenorRow">
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label>
+                  <span>Kỳ hạn hối phiếu</span>
+                  <span class="swift-tag swift-tag-indicator">:42C:
+                    <span class="tooltip-wrap" data-tooltip=":42C:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="draftTenor" value="AT SIGHT" placeholder="AT SIGHT hoặc 60 DAYS AFTER B/L DATE" />
+                <div style="font-size:11px; color:#64748b; margin-top:2px;" id="tenorHint">Trả ngay: AT SIGHT</div>
+              </div>
+              <div class="form-group role-bank-only" id="formGroupDrawee" style="display:none;">
+                <label>
+                  <span>Ngân hàng trả tiền (Drawee)</span>
+                  <span class="swift-tag swift-tag-indicator">:42A:
+                    <span class="tooltip-wrap" data-tooltip=":42A:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                  </span>
+                </label>
+                <input type="text" id="draweeBic" value="BFTVVNVXXXX" placeholder="Ngân hàng phát hành tự định danh" readonly disabled class="input-locked-corporate" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>
+                <span>Mô tả hàng hóa tóm tắt (Từ Hợp đồng để sinh Trường 45A)</span>
+                <span class="swift-tag swift-tag-indicator">:45A:
+                  <span class="tooltip-wrap" data-tooltip=":45A:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
+                </span>
+              </label>
+              <textarea id="goodsDescription" rows="2" placeholder="Tên hàng, model, số lượng, đơn giá..."></textarea>
+            </div>
+
+            <div class="stage-footer">
+              <button type="button" class="btn btn-outline" id="btnRegenerateClauses">Tái tạo nháp 45A/46A/47A theo Incoterms</button>
+              <button type="button" class="btn btn-primary" data-goto-stage="2">Tiếp tục sang Giai đoạn 2: Ký quỹ & Soi lỗi UCP 600 →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== GIAI ĐOẠN 2 ==================== -->
+    <section class="stage-panel" id="stage-2">
+      <!-- Tài chính & Ký quỹ -->
+      <div class="card">
+        <div class="card-header">
+          <h3>2A. Thiết lập Nguồn vốn Ký quỹ (Margin Deposit) & Dự tính Biểu phí Ngân hàng</h3>
+          <span class="badge badge-info" id="bankNameBadge">Vietcombank</span>
+        </div>
+        <div class="card-body">
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label>Tỷ lệ Ký quỹ (% giá trị L/C tối đa)</label>
+              <select id="depositPercent">
+                <option value="100">100% — Ký quỹ tiền mặt toàn phần</option>
+                <option value="50">50% — Ký quỹ một phần + Hạn mức</option>
+                <option value="30">30% — Ký quỹ một phần + Hạn mức</option>
+                <option value="20">20% — Doanh nghiệp tín nhiệm cao</option>
+                <option value="10">10% — Khách hàng ưu tiên</option>
+                <option value="0">0% — Sử dụng 100% Hạn mức Tín dụng</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Tài khoản trích tiền ký quỹ & thu phí (VND / Ngoại tệ)</label>
+              <input type="text" id="debitAccountNo" value="0071000889999" />
+            </div>
+            <div class="form-group">
+              <label>Số HĐ Cấp hạn mức / Tài sản bảo đảm (nếu ký quỹ &lt; 100%)</label>
+              <input type="text" id="creditFacilityRef" placeholder="VD: HDHM-2026-VCB-112" />
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label>Tỷ giá bán ra quy đổi tham chiếu (VND / 1 đơn vị ngoại tệ)</label>
+              <input type="number" id="exchangeRate" value="25450" />
+            </div>
+            <div class="form-group">
+              <label>Mã số khách hàng (CIF) tại Ngân hàng</label>
+              <input type="text" id="customerCif" value="CIF-88901245" />
+            </div>
+            <div class="form-group">
+              <label>Mã số thuế / Số ĐKKD Doanh nghiệp</label>
+              <input type="text" id="applicantTaxId" value="0312456789" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Người đại diện theo pháp luật (Ký Đơn mở L/C)</label>
+            <input type="text" id="legalRepName" value="NGUYỄN MINH TUẤN — TỔNG GIÁM ĐỐC" />
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-box">
+              <div class="kpi-label">Hạn mức L/C tối đa (gồm dung sai)</div>
+              <div class="kpi-value" id="kpiMaxExposure">—</div>
+              <div class="kpi-sub">Bao gồm dung sai +<span id="kpiTolPct">0</span>%</div>
+            </div>
+            <div class="kpi-box">
+              <div class="kpi-label">Số tiền Phong tỏa Ký quỹ</div>
+              <div class="kpi-value" id="kpiDepositForeign">—</div>
+              <div class="kpi-sub" id="kpiDepositVnd">—</div>
+            </div>
+            <div class="kpi-box">
+              <div class="kpi-label">Trích Hạn mức Tín dụng Ngân hàng</div>
+              <div class="kpi-value" id="kpiCreditLine">—</div>
+              <div class="kpi-sub">Phần còn lại cần đảm bảo</div>
+            </div>
+            <div class="kpi-box">
+              <div class="kpi-label">Dự tính Phí mở L/C + Điện SWIFT</div>
+              <div class="kpi-value" id="kpiBankFees">—</div>
+              <div class="kpi-sub" id="kpiBankFeesDetail">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Biên tập 45A, 46A, 47A & Bộ máy Kiểm tra UCP 600 -->
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h3>2B. Trình Biên tập Điều khoản SWIFT (`45A`, `46A`, `47A`, `48`)</h3>
+            <button type="button" class="btn btn-outline btn-sm" id="btnAutoClauses2">Khôi phục mẫu chuẩn theo Incoterms</button>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Mô tả hàng hóa & Điều kiện giao hàng <span class="swift-tag">:45A:</span></label>
+              <textarea id="field45A" rows="4"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Bộ chứng từ yêu cầu <span class="swift-tag">:46A:</span></label>
+              <div class="clause-chips">
+                <button type="button" class="chip-btn" data-add-46a="+ SIGNED COMMERCIAL INVOICE IN 03 ORIGINALS INDICATING L/C NUMBER AND HS CODE.">+ Invoice</button>
+                <button type="button" class="chip-btn" data-add-46a='+ FULL SET (3/3) OF ORIGINAL CLEAN "SHIPPED ON BOARD" MARINE BILL OF LADING MADE OUT TO THE ORDER OF ISSUING BANK, MARKED "FREIGHT PREPAID" AND NOTIFY APPLICANT.'>+ B/L Freight Prepaid</button>
+                <button type="button" class="chip-btn" data-add-46a='+ FULL SET (3/3) OF ORIGINAL CLEAN "SHIPPED ON BOARD" MARINE BILL OF LADING MADE OUT TO THE ORDER OF ISSUING BANK, MARKED "FREIGHT COLLECT" AND NOTIFY APPLICANT.'>+ B/L Freight Collect</button>
+                <button type="button" class="chip-btn" data-add-46a="+ INSURANCE POLICY OR CERTIFICATE FOR AT LEAST 110 PCT OF INVOICE VALUE COVERING INSTITUTE CARGO CLAUSES (A), WAR AND STRIKES CLAUSES.">+ Bảo hiểm 110%</button>
+                <button type="button" class="chip-btn" data-add-46a="+ CERTIFICATE OF ORIGIN FORM E / D / AK / JV ISSUED BY COMPETENT AUTHORITY IN 01 ORIGINAL AND 02 COPIES.">+ C/O ưu đãi thuế</button>
+                <button type="button" class="chip-btn" data-add-46a="+ CERTIFICATE OF QUALITY AND QUANTITY ISSUED BY SGS OR INDEPENDENT INSPECTION AGENCY.">+ Giám định SGS</button>
+              </div>
+              <textarea id="field46A" rows="8"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Các điều kiện bổ sung <span class="swift-tag">:47A:</span></label>
+              <div class="clause-chips">
+                <button type="button" class="chip-btn" data-add-47a="+ A DISCREPANCY FEE OF USD 80.00 PLUS CABLE CHARGES SHALL BE DEDUCTED FROM PROCEEDS FOR EACH PRESENTATION OF DISCREPANT DOCUMENTS.">+ Phạt phí bất hợp lệ</button>
+                <button type="button" class="chip-btn" data-add-47a="+ DOCUMENTS DATED PRIOR TO L/C ISSUANCE DATE ARE NOT ACCEPTABLE.">+ Cấm chứng từ ký trước L/C</button>
+                <button type="button" class="chip-btn" data-add-47a="+ THIRD PARTY DOCUMENTS ARE NOT ACCEPTABLE EXCEPT B/L, C/O AND INSURANCE.">+ Hạn chế bên thứ 3</button>
+              </div>
+              <textarea id="field47A" rows="6"></textarea>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label>Thời hạn xuất trình (ngày sau B/L) <span class="swift-tag">:48:</span></label>
+                <input type="number" id="field48" value="14" min="1" max="45" />
+              </div>
+              <div class="form-group">
+                <label>Xác nhận L/C <span class="swift-tag">:49:</span></label>
+                <select id="field49">
+                  <option value="WITHOUT">WITHOUT (Không xác nhận)</option>
+                  <option value="CONFIRM">CONFIRM (Yêu cầu xác nhận)</option>
+                  <option value="MAY ADD">MAY ADD</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Phí ngân hàng <span class="swift-tag">:71D:</span></label>
+                <input type="text" id="field71D" value="ALL BANKING CHARGES OUTSIDE VIETNAM ARE FOR BENEFICIARY'S ACCOUNT." />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bảng Kiểm tra Tuân thủ UCP 600 -->
+        <div class="card">
+          <div class="card-header">
+            <h3>2C. Kiểm duyệt Rủi ro & Tuân thủ UCP 600 / ISBP 745</h3>
+            <div id="complianceBadgeSummary" style="display:flex; gap:6px;"></div>
+          </div>
+          <div class="card-body">
+            <p style="margin-top:0; font-size:12.5px; color:var(--slate-600);">
+              Hệ thống tự động rà soát 18+ điểm bẫy thực tế giữa Hợp đồng ngoại thương, Incoterms 2020 và UCP 600 theo thời gian thực. Mọi <b>Lỗi Nghiêm trọng (ERROR)</b> phải được xử lý trước khi phát hành điện MT700.
+            </p>
+            <div id="complianceFindingsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-footer">
+        <button type="button" class="btn btn-outline" data-goto-stage="1">← Quay lại Giai đoạn 1</button>
+        <button type="button" class="btn btn-navy" id="btnProceedToStage3">Xác nhận & Phát hành Hồ sơ Mở L/C (Giai đoạn 3) →</button>
+      </div>
+    </section>
+
+    <!-- ==================== GIAI ĐOẠN 3 ==================== -->
+    <section class="stage-panel" id="stage-3">
+      <div class="card">
+        <div class="card-header">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h3>3. Bộ Hồ sơ Phát hành Chính thức (Đơn Mở L/C & Điện SWIFT MT700)</h3>
+            <span class="badge badge-info" id="stage3BankBadge">Mẫu: Vietcombank</span>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;" class="no-print">
+            <button type="button" class="btn btn-outline btn-sm" id="btnOpenOriginalBankPdf">Xem PDF Mẫu Gốc NH</button>
+            <button type="button" class="btn btn-success btn-sm" id="btnDownloadMt700">Tải điện SWIFT MT700 (.txt)</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnCopyMt700">Copy điện MT700</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnDownloadBankAppWord">Tải Đơn Mở L/C (.doc Word)</button>
+            <button type="button" class="btn btn-navy btn-sm" id="btnPrintApplication">In / Lưu PDF Hồ sơ A4</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="subtabs">
+            <button type="button" class="subtab-btn active" data-subtab="tab-swift-mt700">Bức điện chuẩn SWIFT MT700</button>
+            <button type="button" class="subtab-btn" data-subtab="tab-bank-app">Đơn Đề nghị Mở L/C (Mẫu Ngân hàng VN)</button>
+          </div>
+
+          <div class="subtab-pane active" id="tab-swift-mt700">
+            <div class="mt700-format-bar no-print">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:12.5px; font-weight:700; color:var(--slate-700);">Chế độ hiển thị & in ấn MT700:</span>
+                <div class="role-switcher-group">
+                  <button type="button" class="role-toggle-btn active" id="btnMt700ModePrinted" data-mt700-mode="printed">📄 Bản in giấy FIN 700 (Chuẩn Thực tế Ngân hàng)</button>
+                  <button type="button" class="role-toggle-btn" id="btnMt700ModeRaw" data-mt700-mode="raw">⚡ Điện truyền dẫn thô ({1:...}{2:...}{4:...})</button>
+                </div>
+              </div>
+              <span style="font-size:11.5px; color:var(--slate-500);">Mặc định hiển thị Bản in giấy FIN 700; bấm "In / Lưu PDF Hồ sơ A4" để xuất trang giấy A4.</span>
+            </div>
+            <div class="swift-paper-a4" id="mt700Preview"></div>
+          </div>
+
+          <div class="subtab-pane" id="tab-bank-app">
+            <div class="bank-form-a4" id="bankApplicationPreview"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-footer">
+        <button type="button" class="btn btn-outline" data-goto-stage="2">← Quay lại Chỉnh sửa</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline" data-goto-stage="4">Xử lý Tu chỉnh MT707 / Bảo lãnh nhận hàng →</button>
+          <button type="button" class="btn btn-primary" data-goto-stage="5">Đi thẳng tới Giai đoạn 5: Soi Bộ chứng từ Hàng về →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== GIAI ĐOẠN 4 ==================== -->
+    <section class="stage-panel" id="stage-4">
+      <div class="subtabs">
+        <button type="button" class="subtab-btn active" data-subtab="tab-amendment">Tu chỉnh L/C (Amendment — SWIFT MT707)</button>
+        <button type="button" class="subtab-btn" data-subtab="tab-shipping-guarantee">Bảo lãnh Nhận hàng (Shipping Guarantee)</button>
+      </div>
+
+      <div class="subtab-pane active" id="tab-amendment">
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header">
+              <h3>4A. Lập Đề nghị Tu chỉnh L/C (MT707)</h3>
+              <span class="badge badge-info" id="amendNumberBadge">Lần tu chỉnh: #1</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>Số lần tu chỉnh <span class="swift-tag">:26E:</span></label>
+                  <input type="number" id="amendmentNumber" value="1" min="1" />
+                </div>
+                <div class="form-group">
+                  <label>Ngày tu chỉnh <span class="swift-tag">:30:</span></label>
+                  <input type="date" id="amendmentDate" />
+                </div>
+                <div class="form-group">
+                  <label>Số tham chiếu tu chỉnh <span class="swift-tag">:21:</span></label>
+                  <input type="text" id="amendRelatedRef" value="AMEND-01" />
+                </div>
+              </div>
+
+              <div class="form-grid-3">
+                <div class="form-group">
+                  <label>Gia hạn Giao hàng mới <span class="swift-tag">:44C:</span></label>
+                  <input type="date" id="amendNewShipmentDate" />
+                </div>
+                <div class="form-group">
+                  <label>Gia hạn Hết hạn mới <span class="swift-tag">:31E:</span></label>
+                  <input type="date" id="amendNewExpiryDate" />
+                </div>
+                <div class="form-group">
+                  <label>Số tiền L/C mới <span class="swift-tag">:34B:</span></label>
+                  <input type="number" id="amendNewAmount" step="0.01" placeholder="Để trống nếu không đổi" />
+                </div>
+              </div>
+
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label>Đổi Cảng xếp hàng <span class="swift-tag">:44E:</span></label>
+                  <input type="text" id="amendNewPol" placeholder="Để trống nếu giữ nguyên" />
+                </div>
+                <div class="form-group">
+                  <label>Đổi Cảng dỡ hàng <span class="swift-tag">:44F:</span></label>
+                  <input type="text" id="amendNewPod" placeholder="Để trống nếu giữ nguyên" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Tu chỉnh Mô tả hàng hóa <span class="swift-tag">:45B:</span></label>
+                <textarea id="amendField45B" rows="2" placeholder="VD: /ADD/ OR /DELETE/..."></textarea>
+              </div>
+              <div class="form-group">
+                <label>Tu chỉnh Chứng từ yêu cầu <span class="swift-tag">:46B:</span></label>
+                <textarea id="amendField46B" rows="2" placeholder="VD: /ADD/ + CERTIFICATE OF CALIBRATION..."></textarea>
+              </div>
+              <div class="form-group">
+                <label>Tu chỉnh Điều kiện bổ sung <span class="swift-tag">:47B:</span></label>
+                <textarea id="amendField47B" rows="2" placeholder="VD: /REPALL/ ALL DOCUMENTS MUST STATE..."></textarea>
+              </div>
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary" id="btnApplyAmendment">Phát hành Điện MT707 & Cập nhật L/C hiệu lực</button>
+                <button type="button" class="btn btn-outline" id="btnClearAmendment">Hủy tu chỉnh (Về MT700 gốc)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>4B. Bức điện Tu chỉnh SWIFT MT707</h3>
+              <button type="button" class="btn btn-success btn-sm" id="btnDownloadMt707">Tải MT707 (.txt)</button>
+            </div>
+            <div class="card-body">
+              <div id="amendDepositDeltaBox" style="margin-bottom:10px; font-size:12.5px;"></div>
+              <div class="swift-terminal" id="mt707Preview">Chưa phát hành tu chỉnh. Hãy nhập thay đổi ở bên trái và bấm "Phát hành Điện MT707".</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="subtab-pane" id="tab-shipping-guarantee">
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header">
+              <h3>Đề nghị Phát hành Bảo lãnh Nhận hàng (Shipping Guarantee)</h3>
+            </div>
+            <div class="card-body">
+              <p style="margin-top:0; font-size:12.5px; color:var(--slate-600);">
+                Sử dụng khi tàu đã cập cảng (thường gặp tuyến ngắn châu Á) nhưng Bộ chứng từ gốc (B/L gốc) chưa về tới Ngân hàng phát hành.
+              </p>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label>Số Vận đơn (B/L No.)</label>
+                  <input type="text" id="sgBlNumber" value="MOLU268899104" />
+                </div>
+                <div class="form-group">
+                  <label>Ngày B/L</label>
+                  <input type="date" id="sgBlDate" />
+                </div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label>Tên Tàu & Số chuyến (Vessel/Voyage)</label>
+                  <input type="text" id="sgVessel" value="MV PACIFIC HORIZON V.2612S" />
+                </div>
+                <div class="form-group">
+                  <label>Hãng tàu / Đại lý Hãng tàu</label>
+                  <input type="text" id="sgCarrier" value="ONE (OCEAN NETWORK EXPRESS) VIETNAM" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Số lượng kiện / Container / Trọng lượng</label>
+                <input type="text" id="sgCargoDetail" value="04 WOODEN CASES — GROSS WEIGHT 18,450 KGS (1x40'HQ)" />
+              </div>
+              <button type="button" class="btn btn-navy" id="btnGenerateSG">Tạo Giấy Bảo lãnh Nhận hàng</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>Bản in Thư Bảo lãnh Nhận hàng (Gửi Hãng tàu)</h3>
+              <button type="button" class="btn btn-outline btn-sm" id="btnPrintSG">In Giấy Bảo lãnh</button>
+            </div>
+            <div class="card-body">
+              <div class="bank-form-a4" id="sgPreview">Bấm "Tạo Giấy Bảo lãnh Nhận hàng" để hiển thị văn bản cam kết theo chuẩn Ngân hàng TMCP Việt Nam.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-footer">
+        <button type="button" class="btn btn-outline" data-goto-stage="3">← Quay lại Hồ sơ MT700</button>
+        <button type="button" class="btn btn-primary" data-goto-stage="5">Tiếp tục sang Giai đoạn 5: Kiểm tra Chứng từ Hàng về →</button>
+      </div>
+    </section>
+
+    <!-- ==================== GIAI ĐOẠN 5 ==================== -->
+    <section class="stage-panel" id="stage-5">
+      <div class="card">
+        <div class="card-header">
+          <h3>5A. Tiếp nhận Bộ chứng từ Hàng về (Shipping Documents Presentation)</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-danger btn-sm" id="btnLoadSampleDiscrepant">Nạp Bộ chứng từ Mẫu CÓ LỖI (4 Bất hợp lệ)</button>
+            <button type="button" class="btn btn-success btn-sm" id="btnLoadSampleClean">Nạp Bộ chứng từ Mẫu HỢP LỆ (Clean)</button>
+            <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+              Tải lên nhiều ảnh / file chứng từ (.png/.jpg/.docx/.pdf/.txt)
+              <input type="file" id="multiShippingDocsInput" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" multiple style="display:none;" />
+            </label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dropzone" id="stage5Dropzone" style="padding:12px; margin-bottom:10px;">
+            <div style="font-weight:700; color:var(--navy-900); font-size:13px;">
+              📋 Nhấn <kbd style="background:#00565f; color:#fff; padding:1px 6px; border-radius:4px; font-size:11.5px;">Ctrl + V</kbd> để dán liên tiếp nhiều ảnh chụp Chứng từ Hàng về (Invoice, B/L, Packing List, C/O, Bảo hiểm) hoặc kéo thả file vào đây
+            </div>
+            <div style="font-size:11.5px; color:var(--slate-600);">
+              Thoải mái thêm/bớt ảnh trong Hàng đợi bằng nút <b>✕</b> ở góc phải trên, sau đó bấm <b>"Phân tích & Điền dữ liệu Chứng từ"</b>.
+            </div>
+          </div>
+
+          <!-- Hàng đợi nhiều ảnh / file chờ phân tích (Stage 5A) -->
+          <div class="paste-queue-box" id="stage5QueueBox" style="display:none; margin-bottom:14px;">
+            <div class="paste-queue-header">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span class="badge badge-info" id="stage5QueueCountBadge">0 trang ảnh/file chờ phân tích</span>
+                <span style="font-size:11.5px; color:var(--slate-600);" id="stage5QueueStatusText">Nhấn Ctrl+V để dán thêm ảnh chứng từ hoặc bấm ✕ để loại bỏ ảnh thừa trước khi phân tích.</span>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline btn-sm" id="btnClearStage5Queue">Xóa hết hàng đợi</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnAnalyzeStage5Queue">🔍 Phân tích & Điền dữ liệu Chứng từ</button>
+              </div>
+            </div>
+            <div class="paste-queue-grid" id="stage5QueueGrid"></div>
+          </div>
+
+          <div class="form-grid-3" style="margin-bottom:12px;">
+            <div class="form-group">
+              <label>Ngày Ngân hàng nhận Bộ chứng từ xuất trình</label>
+              <input type="date" id="docPresentationDate" />
+            </div>
+            <div class="form-group">
+              <label>Hạn giao hàng hiệu lực (:44C:) đang áp dụng</label>
+              <input type="text" id="eff44CDisplay" readonly style="background:var(--slate-100); font-weight:700;" />
+            </div>
+            <div class="form-group">
+              <label>Trị giá L/C hiệu lực (:32B:) đang áp dụng</label>
+              <input type="text" id="eff32BDisplay" readonly style="background:var(--slate-100); font-weight:700;" />
+            </div>
+          </div>
+
+          <div class="doc-grid">
+            <!-- 1. Commercial Invoice -->
+            <div class="doc-card">
+              <div class="doc-card-head">
+                <h4>1. Commercial Invoice (Hóa đơn thương mại)</h4>
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                  Tải file <input type="file" class="single-doc-upload" data-doc-type="invoice" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" style="display:none;" />
+                </label>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group"><label>Số Invoice</label><input type="text" id="docInvNo" /></div>
+                <div class="form-group"><label>Ngày Invoice</label><input type="date" id="docInvDate" /></div>
+                <div class="form-group"><label>Số L/C ghi trên Invoice</label><input type="text" id="docInvLcNo" /></div>
+                <div class="form-group"><label>Trị giá Invoice</label><input type="number" id="docInvAmount" step="0.01" /></div>
+                <div class="form-group"><label>Số kiện</label><input type="number" id="docInvPackages" /></div>
+                <div class="form-group"><label>Loại tiền</label><input type="text" id="docInvCurrency" value="USD" /></div>
+              </div>
+              <div class="form-group"><label>Mô tả hàng hóa trên Invoice</label><input type="text" id="docInvGoods" /></div>
+            </div>
+
+            <!-- 2. Bill of Lading -->
+            <div class="doc-card">
+              <div class="doc-card-head">
+                <h4>2. Marine Bill of Lading (Vận đơn đường biển)</h4>
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                  Tải file <input type="file" class="single-doc-upload" data-doc-type="billOfLading" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" style="display:none;" />
+                </label>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group"><label>Số B/L</label><input type="text" id="docBlNo" /></div>
+                <div class="form-group"><label>Ngày Shipped on Board</label><input type="date" id="docBlOnBoardDate" /></div>
+                <div class="form-group"><label>Port of Loading (trên B/L)</label><input type="text" id="docBlPol" /></div>
+                <div class="form-group"><label>Port of Discharge (trên B/L)</label><input type="text" id="docBlPod" /></div>
+                <div class="form-group"><label>Trọng lượng Gross Weight (kg)</label><input type="number" id="docBlGrossWeight" step="0.01" /></div>
+                <div class="form-group"><label>Số kiện (Packages)</label><input type="number" id="docBlPackages" /></div>
+                <div class="form-group">
+                  <label>Điều kiện cước (Freight)</label>
+                  <select id="docBlFreightTerm">
+                    <option value="FREIGHT PREPAID">FREIGHT PREPAID</option>
+                    <option value="FREIGHT COLLECT">FREIGHT COLLECT</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Tình trạng Vận đơn</label>
+                  <select id="docBlClean">
+                    <option value="true">Clean Shipped on Board (Hợp lệ)</option>
+                    <option value="false">Unclean / Có ghi chú hư hỏng</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. Packing List -->
+            <div class="doc-card">
+              <div class="doc-card-head">
+                <h4>3. Packing List (Phiếu đóng gói)</h4>
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                  Tải file <input type="file" class="single-doc-upload" data-doc-type="packingList" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" style="display:none;" />
+                </label>
+              </div>
+              <div class="form-grid-3">
+                <div class="form-group"><label>Gross Weight (kg)</label><input type="number" id="docPlGrossWeight" step="0.01" /></div>
+                <div class="form-group"><label>Net Weight (kg)</label><input type="number" id="docPlNetWeight" step="0.01" /></div>
+                <div class="form-group"><label>Số kiện (Packages)</label><input type="number" id="docPlPackages" /></div>
+              </div>
+            </div>
+
+            <!-- 4. Bill of Exchange (Draft) -->
+            <div class="doc-card">
+              <div class="doc-card-head">
+                <h4>4. Bill of Exchange / Draft (Hối phiếu)</h4>
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                  Tải file <input type="file" class="single-doc-upload" data-doc-type="draft" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" style="display:none;" />
+                </label>
+              </div>
+              <div class="form-grid-3">
+                <div class="form-group"><label>Số Hối phiếu</label><input type="text" id="docDraftNo" /></div>
+                <div class="form-group"><label>Số tiền Hối phiếu</label><input type="number" id="docDraftAmount" step="0.01" /></div>
+                <div class="form-group"><label>Kỳ hạn (Tenor)</label><input type="text" id="docDraftTenor" value="AT SIGHT" /></div>
+              </div>
+            </div>
+
+            <!-- 5. Certificate of Origin -->
+            <div class="doc-card">
+              <div class="doc-card-head">
+                <h4>5. Certificate of Origin (C/O)</h4>
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                  Tải file <input type="file" class="single-doc-upload" data-doc-type="certificateOfOrigin" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" style="display:none;" />
+                </label>
+              </div>
+              <div class="form-grid-3">
+                <div class="form-group"><label>Số tham chiếu C/O</label><input type="text" id="docCoNo" /></div>
+                <div class="form-group"><label>Nước xuất xứ</label><input type="text" id="docCoOrigin" /></div>
+                <div class="form-group"><label>Gross Weight trên C/O (kg)</label><input type="number" id="docCoGrossWeight" step="0.01" /></div>
+              </div>
+            </div>
+
+            <!-- 6. Insurance Policy -->
+            <div class="doc-card">
+              <div class="doc-card-head">
+                <h4>6. Insurance Policy / Certificate (Bảo hiểm)</h4>
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+                  Tải file <input type="file" class="single-doc-upload" data-doc-type="insurance" accept=".docx,.pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp" style="display:none;" />
+                </label>
+              </div>
+              <div class="form-grid-3">
+                <div class="form-group"><label>Số đơn bảo hiểm</label><input type="text" id="docInsNo" /></div>
+                <div class="form-group"><label>Ngày phát hành Bảo hiểm</label><input type="date" id="docInsDate" /></div>
+                <div class="form-group"><label>Số tiền bảo hiểm</label><input type="number" id="docInsAmount" step="0.01" /></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+            <button type="button" class="btn btn-navy" id="btnRunDiscrepancyCheck">Chạy Đối chiếu Bộ chứng từ theo UCP 600 / ISBP 745</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kết quả kiểm tra Bất hợp lệ & Quyết định của Nhà nhập khẩu -->
+      <div class="card">
+        <div class="card-header">
+          <h3>5B. Kết quả Kiểm tra Chứng từ & Quyết định Xử lý (Waive / Refuse)</h3>
+          <span class="badge badge-info" id="discrepancyStatusBadge">Chưa chạy đối chiếu</span>
+        </div>
+        <div class="card-body">
+          <div id="discrepancyResultsBox">Hãy nạp bộ chứng từ mẫu hoặc tải file chứng từ hàng về ở mục 5A, sau đó bấm nút <b>"Chạy Đối chiếu Bộ chứng từ"</b>.</div>
+
+          <div id="mt734Container" style="display:none; margin-top:16px;">
+            <h4 style="margin:0 0 8px;">Bức điện Thông báo Bất hợp lệ (SWIFT MT734 — Advice of Refusal)</h4>
+            <div class="swift-terminal" id="mt734Preview"></div>
+          </div>
+
+          <div id="importerDecisionBar" style="display:none; margin-top:16px; padding:14px; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius-md);">
+            <h4 style="margin:0 0 8px;">Quyết định của Nhà nhập khẩu (Applicant Decision)</h4>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+              <button type="button" class="btn btn-success" id="btnWaiveAndPay">Chấp nhận bỏ qua lỗi (Waive Discrepancies) & Thanh toán L/C (Trừ phí bất hợp lệ từ tiền trả người bán)</button>
+              <button type="button" class="btn btn-danger" id="btnRefuseDocs">Từ chối bộ chứng từ & Yêu cầu người bán sửa chứng từ / giảm giá</button>
+            </div>
+            <div id="finalSettlementResult" style="margin-top:10px; font-weight:600;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-footer">
+        <button type="button" class="btn btn-outline" data-goto-stage="4">← Quay lại Giai đoạn 4</button>
+        <button type="button" class="btn btn-outline" data-goto-stage="1">Về Giai đoạn 1</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toastBox"></div>
+
+  <!-- Modal Xem trước Điện SWIFT MT700 -->
+  <div class="modal-overlay" id="rawSwiftModal">
+    <div class="modal-box" style="max-width:920px;">
+      <div class="modal-header" style="flex-wrap:wrap; gap:10px;">
+        <h3>
+          <span>📄 XEM TRƯỚC BỨC ĐIỆN SWIFT FIN 700 (MT700 PREVIEW)</span>
+        </h3>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="role-switcher-group" style="background:#1e293b;">
+            <button type="button" class="role-toggle-btn active" id="btnModalMt700Printed" style="color:#cbd5e1;">📄 Bản in giấy FIN 700</button>
+            <button type="button" class="role-toggle-btn" id="btnModalMt700Raw" style="color:#cbd5e1;">⚡ Điện truyền dẫn thô ({1:...}{4:...})</button>
+          </div>
+          <button type="button" class="btn btn-ghost-light btn-sm" id="btnCloseRawSwiftModal" style="color:#fff; font-size:16px;">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" style="background:#e2e8f0;">
+        <div class="swift-paper-a4" id="rawSwiftModalText" style="max-height:68vh; overflow-y:auto;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-sm" id="btnCopyRawSwiftModal" style="background:#fff;">Copy nội dung điện</button>
+        <button type="button" class="btn btn-navy btn-sm" id="btnCloseRawSwiftModal2">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/ucp600-engine.js?v=20261119_ocr2"></script>
+  <script src="js/bank-logos.js?v=20261119_ocr2"></script>
+  <script src="js/bank-templates.js?v=20261119_ocr2"></script>
+  <script src="js/docx-pdf-parser.js?v=20261119_ocr2"></script>
+  <script src="js/app.js?v=20261119_ocr2"></script>
+</body>
+</html>

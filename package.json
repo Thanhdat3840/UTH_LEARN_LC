@@ -1,0 +1,27 @@
+{
+  "name": "tradefin-import-lc-simulator",
+  "version": "1.0.0",
+  "description": "Phần mềm giả lập quy trình mở và quản trị Thư tín dụng Nhập khẩu (Import L/C) chuẩn UCP 600 / ISBP 745 / SWIFT MT700 & MT707 - 100% Offline",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "generate-samples": "node generate-samples.js",
+    "test": "node test-engine.js"
+  },
+  "keywords": [
+    "L/C",
+    "Letter of Credit",
+    "SWIFT MT700",
+    "SWIFT MT707",
+    "UCP 600",
+    "ISBP 745",
+    "Logistics",
+    "Import",
+    "Trade Finance"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^3.11.174"
+  }
+}
