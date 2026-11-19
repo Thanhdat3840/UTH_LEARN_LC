@@ -4,6 +4,7 @@
   "description": "Phần mềm giả lập quy trình mở và quản trị Thư tín dụng Nhập khẩu (Import L/C) chuẩn UCP 600 / ISBP 745 / SWIFT MT700 & MT707 - 100% Offline",
   "main": "server.js",
   "scripts": {
+    "build": "echo Build completed",
     "start": "node server.js",
     "generate-samples": "node generate-samples.js",
     "test": "node test-engine.js"
