@@ -106,26 +106,15 @@
         <div class="card">
           <div class="card-header">
             <h3>1A. Tài liệu Hợp đồng Ngoại thương (Sales Contract)</h3>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <select id="selectSampleContract" style="width:auto; min-width:210px; font-size:12.5px; padding:5px 8px;">
+                <option value="">-- Tải file Hợp đồng mẫu có sẵn --</option>
+              </select>
+              <button type="button" class="btn btn-outline btn-sm" id="btnLoadSampleContract">Nạp mẫu</button>
+            </div>
           </div>
           <div class="card-body">
-            <!-- Thanh Tham khảo Hợp đồng Mẫu (Benchmark & Bẫy thực hành) -->
-            <div style="background:#f8fafc; border:1px dashed #94a3b8; border-radius:6px; padding:8px 12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="background:#475569; color:#fff; font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px;">CHỈ DÙNG THAM KHẢO</span>
-                <span style="font-size:12px; color:#334155; font-weight:600;">Hợp đồng mẫu đối chiếu (Benchmark / Thử bẫy UCP 600):</span>
-              </div>
-              <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                <select id="selectSampleContract" style="width:auto; min-width:240px; font-size:12px; padding:4px 8px;">
-                  <option value="">-- Danh sách Hợp đồng mẫu tham khảo --</option>
-                </select>
-                <button type="button" class="btn btn-outline btn-sm" id="btnLoadSampleContract" style="font-size:12px; padding:4px 10px;">Xem nạp mẫu</button>
-              </div>
-            </div>
-
             <div class="dropzone" id="contractDropzone">
-              <div style="font-size:11px; font-weight:800; color:#0e7490; letter-spacing:0.5px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-                <span>📌 KHU VỰC CHÍNH: NẠP HỢP ĐỒNG CỦA BẠN ĐỂ XỬ LÝ</span>
-              </div>
               <div style="font-weight:700; color:var(--navy-900); margin-bottom:4px;">
                 📋 Nhấn <kbd style="background:#00565f; color:#fff; padding:1px 6px; border-radius:4px; font-size:12px;">Ctrl + V</kbd> để dán nhiều ảnh chụp màn hình, hoặc kéo thả / bấm chọn nhiều file (.png, .jpg, .docx, .pdf, .txt)
               </div>
@@ -171,12 +160,7 @@
         <div class="card">
           <div class="card-header">
             <h3>1B. Đơn Đề nghị Mở L/C (Dành cho Doanh nghiệp — Applicant)</h3>
-            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-              <span class="badge badge-pass" id="autoFillNote">Các ô nền xanh ngọc là dữ liệu được Auto-fill</span>
-              <button type="button" class="btn btn-outline btn-sm" id="btnResetFormStage1" title="Xóa trắng toàn bộ dữ liệu trên form để nạp hợp đồng mới" style="color:#ef4444; border-color:#fca5a5; font-size:12px; padding:3px 8px;">
-                🔄 Xóa trắng Form
-              </button>
-            </div>
+            <span class="badge badge-pass" id="autoFillNote">Các ô nền xanh ngọc là dữ liệu được Auto-fill</span>
           </div>
           <div class="card-body">
             <!-- Thanh trạng thái Góc độ Doanh nghiệp & Xem trước MT700 -->
