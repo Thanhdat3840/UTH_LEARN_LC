@@ -501,12 +501,12 @@
       beneficiaryName: ex.beneficiaryName,
       beneficiaryAddress: ex.beneficiaryAddress,
       advisingBankName: ex.advisingBankName,
-      advisingBankBic: ex.advisingBankBic || 'SMBCJPJTXXX',
-      currency: ex.currency || 'USD',
-      amount: ex.amount,
+      advisingBankBic: ex.advisingBankBic || '',
+      currency: ex.currency || el('currency').value || 'USD',
+      amount: ex.amount || '',
       tolerancePlus: ex.tolerancePlus || '0',
       toleranceMinus: ex.toleranceMinus || '0',
-      incoterms: ex.incoterms || 'CIF',
+      incoterms: ex.incoterms || el('incoterms').value || 'CIF',
       portOfLoading: ex.portOfLoading,
       portOfDischarge: ex.portOfDischarge,
       latestShipmentDate: ex.latestShipmentDate,
@@ -923,13 +923,13 @@
       const json = await resp.json();
       const contracts = (json.files || []).filter(f => f.path.startsWith('contracts/') && f.name.endsWith('.docx'));
       const sel = el('selectSampleContract');
-      sel.innerHTML = '<option value="">-- Tải file Hợp đồng mẫu có sẵn --</option>';
+      sel.innerHTML = '<option value="">-- Chọn Mẫu tham khảo đối chiếu (Benchmark) --</option>';
 
       // Ưu tiên 3 mẫu chuẩn
       const priorityNames = [
-        { path: 'contracts/01_Sales_Contract_CIF_Machinery_Japan.docx', label: '1. Mẫu 1 (Chuẩn cơ bản): Máy CNC Nhật Bản (CIF, At Sight)' },
-        { path: 'contracts/02_Sales_Contract_FOB_China_Usance.docx', label: '2. Mẫu 2 (Trả chậm & Giao từng phần): Vải sợi TQ (FOB, 60 Days)' },
-        { path: 'contracts/03_Sales_Contract_EXW_Trap_Warning.docx', label: '3. Mẫu 3 (Bẫy nghiệp vụ): Cảm biến quang EXW Tokyo (Bẫy B/L & Hạn L/C)' }
+        { path: 'contracts/01_Sales_Contract_CIF_Machinery_Japan.docx', label: '📖 [Tham khảo 1]: Máy CNC Nhật Bản (CIF, At Sight)' },
+        { path: 'contracts/02_Sales_Contract_FOB_China_Usance.docx', label: '📖 [Tham khảo 2]: Vải sợi TQ (FOB, 60 Days Usance)' },
+        { path: 'contracts/03_Sales_Contract_EXW_Trap_Warning.docx', label: '⚠️ [Tham khảo 3 - Bẫy]: Cảm biến EXW Tokyo (Bẫy B/L & Hạn L/C)' }
       ];
 
       for (const p of priorityNames) {
@@ -943,7 +943,7 @@
         if (!priorityNames.some(p => p.path === c.path) && !c.name.startsWith('01_') && !c.name.startsWith('02_') && !c.name.startsWith('03_')) {
           const opt = document.createElement('option');
           opt.value = c.path;
-          opt.textContent = c.name.replace('.docx', '').replace(/_/g, ' ');
+          opt.textContent = '📖 [Tham khảo]: ' + c.name.replace('.docx', '').replace(/_/g, ' ');
           sel.appendChild(opt);
         }
       }
@@ -1640,6 +1640,57 @@
       localStorage.removeItem(STORAGE_KEY);
       location.reload();
     });
+
+    const btnResetStage1 = el('btnResetFormStage1');
+    if (btnResetStage1) {
+      btnResetStage1.addEventListener('click', () => {
+        if (confirm('Bạn có chắc chắn muốn xóa trắng toàn bộ biểu mẫu để nạp Hợp đồng thực tế mới?')) {
+          resetLcFormToBlank();
+        }
+      });
+    }
+  }
+
+  function resetLcFormToBlank() {
+    for (const key of LC_FIELDS) {
+      const node = el(key);
+      if (!node) continue;
+      if (key === 'issuingBankCode') node.value = 'VCB';
+      else if (key === 'form40A') node.value = 'IRREVOCABLE';
+      else if (key === 'issueDate') node.value = todayIso();
+      else if (key === 'tolerancePlus' || key === 'toleranceMinus') node.value = '0';
+      else if (key === 'expiryPlace') node.value = 'AT BENEFICIARY COUNTRY';
+      else if (key === 'partialShipment') node.value = 'NOT ALLOWED';
+      else if (key === 'transhipment') node.value = 'ALLOWED';
+      else if (key === 'availableBy') node.value = 'BY PAYMENT';
+      else if (key === 'draftTenor') node.value = 'AT SIGHT';
+      else if (key === 'currency') node.value = 'USD';
+      else if (key === 'incoterms') node.value = 'CIF';
+      else node.value = '';
+      node.classList.remove('autofilled');
+    }
+    setAmountVal('');
+    el('rawContractInput').value = '';
+    el('contractHighlightViewer').innerHTML = 'Chưa có nội dung hợp đồng. Vui lòng tải lên file hoặc dán ảnh chụp màn hình Hợp đồng thực tế của bạn để hệ thống bóc tách.';
+    el('parseStatsBadge').textContent = 'Chưa nạp hợp đồng';
+    appState.contractParsed = null;
+    appState.contractRawText = '';
+    appState.amendment = null;
+    appState.issuedFlag = false;
+    appState.settlementStatus = '';
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {}
+    applyCorporateRoleUI();
+    handlePaymentTenorSync();
+    updateSwiftDateHints();
+    validateTimelineDates();
+    updateCharCounters();
+    checkFieldCharsets();
+    checkIncotermsRisks();
+    renderFinancialsAndCompliance();
+    updateSummaryStrip();
+    showToast('Đã xóa trắng biểu mẫu. Bạn có thể nạp Hợp đồng thực tế mới.');
   }
 
   function toggleCustomBankFields() {
@@ -1682,10 +1733,10 @@
         }
       } catch (_) {}
     } else {
-      setAmountVal(125000);
+      setAmountVal('');
     }
 
-    if (!el('field45A').value && !el('field46A').value) {
+    if (!el('field45A').value && !el('field46A').value && el('contractNo').value) {
       const defaults = Engine.buildDefaultMT700Clauses(readLcFormFromDom());
       writeLcFormToDom(defaults);
     }
