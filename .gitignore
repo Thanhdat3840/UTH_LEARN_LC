@@ -1,3 +1,23 @@
 node_modules/
 .system_generated/
 *.log
+
+# Môi trường & Khóa bảo mật (Secret & Credentials)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.*
+credentials.json
+token.txt
+
+# Cơ sở dữ liệu cục bộ & Tệp tạm thời
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.DS_Store
+Thumbs.db
+~$*.docx
