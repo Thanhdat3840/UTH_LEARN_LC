@@ -1003,8 +1003,10 @@
         /\bETA\s+([A-Z\s\-]+PORT)\s*[+:\-]/i
       ]);
 
-      const blGrossRaw = grossWeightRaw || grab([
-        /\b([\d,]{3,10}(?:\.\d{1,3})?)\s*K[GC6][S5]?\b/i,
+      const blGrossRaw = grab([
+        /(?:Gross\s*Weight|G\.W\.?)\s*[:\-]\s*([\d,.]+)\s*(?:KGS?|MT)?/i,
+        /\b(\d{1,3}(?:,\d{3})+(?:\.\d{1,3})?)\s*K[GC6][S5]?\b/i,
+        /\b(\d{3,6}\.\d{1,3})\s*K[GC6][S5]?\b/i,
         /\b([\d,]{3,10}\.\d{2})\s+(?:[A-Z0-9]{2,4}\s+)?[\d.]+\s*(?:M3|CBM)\b/i
       ]);
 
@@ -1020,7 +1022,7 @@
         grossWeight: normalizeNumericValue(blGrossRaw),
         packages: packagesRaw,
         freightTerm,
-        cleanOnBoard: !hasUnclean && hasOnBoard,
+        cleanOnBoard: hasUnclean ? false : (hasOnBoard ? true : undefined),
         remarks: hasUnclean ? 'Phát hiện ghi chú bất thường trên Vận đơn' : ''
       };
     }
@@ -1062,7 +1064,7 @@
       let coNo = grab([
         /(?:Reference\s*No\.?|C\/O\s*No\.?|Certificate\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i,
         /\b(\d{6,10})\s+OR[I1]G[I1]NAL\b/i,
-        /(?:Friedrichshafen|Consignor|Absender)[\s\S]{0,80}?\b(\d{6,10})\b/i
+        /(?:Friedrichshafen|Consignor|Absender)[\s\S]{0,90}?\b((?!618302)\d{6,10})\b/i
       ]);
       let origin = grab([
         /(?:Country\s*of\s*Origin)\s*:\s*([^\n]{2,50})/i,
@@ -1070,13 +1072,13 @@
       ]);
       if (!origin || /singapore/i.test(origin)) {
         const countryChecks = [
-          /\b(Federal\s+Republic\s+of\s+Germany)\b/i,
-          /\b(Germany|Japan|China|South\s+Korea|United\s+States|France|Italy|Thailand|Vietnam)\b/i
+          { re: /\b([FY]ederal\s+Republic\s+of\s+Germany)\b/i, norm: 'Federal Republic of Germany' },
+          { re: /\b(Germany|Japan|China|South\s+Korea|United\s+States|France|Italy|Thailand|Vietnam)\b/i }
         ];
         let foundSpecific = '';
-        for (const re of countryChecks) {
-          const m = text.match(re);
-          if (m && m[1]) { foundSpecific = m[1].trim(); break; }
+        for (const item of countryChecks) {
+          const m = text.match(item.re);
+          if (m && m[1]) { foundSpecific = item.norm || m[1].trim(); break; }
         }
         if (foundSpecific) {
           origin = foundSpecific;
@@ -1085,7 +1087,8 @@
         }
       }
       const coGrossRaw = grossWeightRaw || grab([
-        /\b(\d{1,3}(?:\.\d{3})+,\d{1,2})\s*(?:[a-z]{1,3})?\b/i,
+        /\b(\d{1,3}(?:\.\d{3})+,\d{1,2})\b/,
+        /(?:Trestle|pallet)\s+([\d.,]{4,12})\s*(?:k[gq9]s?|[a-z]{1,2})?\b/i,
         /\b([\d,]{3,10}\.\d{1,2})\s*k[gq9]s?\b/i
       ]);
       return {
@@ -1136,6 +1139,27 @@
         amount,
         currency,
         lcNumber
+      };
+    }
+
+    if (docType === 'arrivalNotice') {
+      const anBlNo = grab([
+        /(?:Vận\s*tải\s*đơn\s*số|Van\s*tai\s*don\s*s[oốé]|B\/L\s*no\.?)\s*[:\-]?\s*([A-Z0-9\-\/_]{5,35})/i
+      ]);
+      const anGross = grab([
+        /(?:^|[^\d.,])(\d{1,3}(?:,\d{3})+(?:\.\d{1,3})?|\d{3,6}(?:\.\d{1,3})?)\s*KGS?\b/i
+      ]);
+      const anPol = grab([
+        /(?:Cảng\s*Xếp\s*hàng|Cang\s*X[eéê]p\s*hang|Port\s*of\s*loading)\s*[:\-]\s*([A-Z\s]{3,40}?)(?=\s+C[aả]ng|\n)/i
+      ]);
+      const anPod = grab([
+        /(?:Cảng\s*đến|Cang\s*d[eéê]n|Port\s*of\s*Delivery)\s*[:\-]\s*([A-Z,\s\-]{3,40})/i
+      ]);
+      return {
+        blNumber: anBlNo,
+        grossWeight: normalizeNumericValue(anGross),
+        portOfLoading: anPol ? (anPol.trim() + (/\bPORT\b/i.test(anPol) ? '' : ' PORT')) : '',
+        portOfDischarge: anPod ? anPod.trim() : ''
       };
     }
 

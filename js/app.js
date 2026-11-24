@@ -959,14 +959,19 @@
     if (f.includes('origin') || /\bco\b/.test(f)) return 'certificateOfOrigin';
     if (f.includes('insurance')) return 'insurance';
 
-    // 2. Loại trừ các trang L/C MT700, Hợp đồng ngoại thương, C/Q hoặc Arrival Notice khi dán hàng loạt ảnh (Ctrl+V)
+    // 2. Loại trừ các trang L/C MT700, Hợp đồng ngoại thương, C/Q hoặc mặt sau điều khoản dài B/L (BL2.jpg) khi dán hàng loạt ảnh (Ctrl+V)
     if (/Input\s*Message\s*Type\s*:\s*MT700|FORM\s*OF\s*DOCUMENTARY\s*CREDIT|:40A:|:46A:/i.test(t)) return null;
     if (/HEREINAFTER\s+CALLED\s+["“']?THE\s+(?:SELLER|BUYER)|IT\s+IS\s+MUTUALLY\s+AGREED/i.test(t)) return null;
-    if (/ARRIVAL\s+NOTICE|GIẤY\s+BÁO\s+HÀNG\s+ĐẾN/i.test(t)) return null;
     if (/WERKSBESCHEINIGUNG|ACCEPTANCE\s+TEST\s+CERTIFICATE/i.test(t)) return null;
+    if (/(?:the\s+Carrier\s+shall|the\s+Merchant\s+shall|General\s+Average|indemnify\s+the\s+Carrier|in\s+no\s+circumstances\s+be\s+liable|SHIPPER\s+PACKED\s+CONTAINERS)/i.test(t)) {
+      return null;
+    }
 
-    // 3. Nhận diện Giấy báo chứng từ ngân hàng (Advice of Arrival of Documents) & Shipping Advice
-    if (/GI[ẤA]Y\s*B[ÁA]O\s*CH[ỨU]NG\s*T[ỪƯ]|ADVICE\s*OF\s*ARRIVAL\s*OF\s*DOCUMENTS/i.test(t)) {
+    // 3. Nhận diện Giấy báo nhận hàng (Arrival Notice), Giấy báo chứng từ ngân hàng (Advice) & Shipping Advice
+    if (/\bARRIVAL\s+NOTICE\b|GI[ẤA]Y\s*B[ÁA]O\s*NH[ẬA]N\s*H[ÀA]NG|GIAY\s*BAO\s*NHAN\s*HANG/i.test(t)) {
+      return 'arrivalNotice';
+    }
+    if (/GI[ẤA]Y\s*B[ÁA]O\s*CH[ỨU]NG\s*T[ỪƯU]|ADVICE\s*OF\s*ARRIVAL\s*OF\s*DOCUMENTS/i.test(t)) {
       return 'adviceOfDocuments';
     }
     if (/\bSHIPPING\s+ADVIS[EC]\b/i.test(t) || /\bPARTICULARS\s+OF\s+SHIPMENT\b/i.test(t)) {
@@ -1418,6 +1423,7 @@
       try {
         const map = {};
         let shippingAdviceData = null;
+        let arrivalNoticeData = null;
         for (let i = 0; i < stage5Queue.length; i++) {
           const item = stage5Queue[i];
           if (btn) btn.textContent = `⏳ Đang đọc trang ${i + 1}/${stage5Queue.length}...`;
@@ -1429,15 +1435,23 @@
           const docType = detectDocTypeByFilenameAndText(item.name, text);
           if (docType === 'shippingAdvice') {
             shippingAdviceData = Object.assign({}, shippingAdviceData || {}, Parser.parseShippingDocText(text, 'shippingAdvice'));
+          } else if (docType === 'arrivalNotice') {
+            arrivalNoticeData = Object.assign({}, arrivalNoticeData || {}, Parser.parseShippingDocText(text, 'arrivalNotice'));
           } else if (docType) {
             const parsedDoc = Parser.parseShippingDocText(text, docType);
-            map[docType] = Object.assign({}, map[docType] || {}, Object.fromEntries(
+            const prevDoc = map[docType] || {};
+            const cleanedEntries = Object.fromEntries(
               Object.entries(parsedDoc).filter(([_, v]) => v !== '' && v !== undefined && v !== null)
-            ));
+            );
+            const mergedDoc = Object.assign({}, prevDoc, cleanedEntries);
+            if (docType === 'billOfLading' && prevDoc.cleanOnBoard === true && !parsedDoc.remarks) {
+              mergedDoc.cleanOnBoard = true;
+            }
+            map[docType] = mergedDoc;
           }
         }
 
-        // Bổ sung các trường còn trống trên B/L và Invoice từ Shipping Advice (không ghi đè dữ liệu gốc đã bóc được)
+        // Bổ sung các trường còn trống trên B/L và Invoice từ Shipping Advice & Arrival Notice (không ghi đè dữ liệu gốc)
         if (shippingAdviceData) {
           map.billOfLading = map.billOfLading || {};
           for (const k of ['blNumber', 'onBoardDate', 'portOfDischarge', 'portOfLoading']) {
@@ -1449,6 +1463,14 @@
           for (const k of ['invoiceNo', 'amount', 'currency', 'lcNumber']) {
             if (!map.invoice[k] && shippingAdviceData[k]) {
               map.invoice[k] = shippingAdviceData[k];
+            }
+          }
+        }
+        if (arrivalNoticeData) {
+          map.billOfLading = map.billOfLading || {};
+          for (const k of ['blNumber', 'grossWeight', 'portOfLoading', 'portOfDischarge']) {
+            if (!map.billOfLading[k] && arrivalNoticeData[k]) {
+              map.billOfLading[k] = arrivalNoticeData[k];
             }
           }
         }
