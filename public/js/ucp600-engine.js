@@ -569,7 +569,7 @@
     }
 
     // 2. Kiểm tra logic chuỗi thời gian UCP 600: Ngày ký HĐ <= 31C <= 44C <= 31D
-    const dContract = lcData.contractDate || c.contractDate;
+    const dContract = lcData.contractDate;
     const dIssue = lcData.issueDate;
     const dShip = lcData.latestShipmentDate;
     const dExp = lcData.expiryDate;
@@ -654,31 +654,7 @@
       }
     }
 
-    // 4. Kiểm tra khớp số tiền & ngày giao hàng với Hợp đồng gốc
-    if (c.amount && parseNumberSafe(c.amount) > 0 && parseNumberSafe(lcData.amount) > 0) {
-      const diffAmt = Math.abs(parseNumberSafe(lcData.amount) - parseNumberSafe(c.amount));
-      if (diffAmt > 0.01) {
-        add(
-          'ERROR',
-          'AMOUNT_MISMATCH_CONTRACT',
-          'Đối chiếu Hợp đồng Ngoại thương',
-          'Số tiền L/C (32B) lệch so với Tổng trị giá Hợp đồng gốc',
-          `Hợp đồng ghi ${formatHumanAmount(c.amount, c.currency || lcData.currency)}, trong khi Đơn mở L/C ghi ${formatHumanAmount(lcData.amount, lcData.currency)}.`,
-          'Kiểm tra lại xem L/C mở cho 100% giá trị hợp đồng hay có trừ phần trả trước (T/T deposit). Nếu không có T/T trước, cần sửa lại Trường 32B cho khớp Hợp đồng.'
-        );
-      }
-    }
-
-    if (c.currency && lcData.currency && c.currency.toUpperCase() !== lcData.currency.toUpperCase()) {
-      add(
-        'ERROR',
-        'CURRENCY_MISMATCH_CONTRACT',
-        'Đối chiếu Hợp đồng Ngoại thương',
-        'Loại tiền tệ (32B) không khớp Hợp đồng gốc',
-        `Hợp đồng dùng ${c.currency}, Đơn mở L/C lại chọn ${lcData.currency}.`,
-        `Chuyển Trường 32B về đúng đồng tiền ${c.currency}.`
-      );
-    }
+    // 4. (Đã gỡ bỏ việc đối chiếu cứng Số tiền / Loại tiền với dữ liệu bóc tách tạm thời để tôn trọng quyền chỉnh sửa của người dùng trên Form)
 
     // 5. Kiểm tra mâu thuẫn hối phiếu 41A và 42C
     const availBy = (lcData.availableBy || 'BY PAYMENT').toUpperCase();

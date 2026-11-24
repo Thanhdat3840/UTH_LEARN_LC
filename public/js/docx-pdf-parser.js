@@ -59,14 +59,14 @@
       }
     }
 
-    // Month DD, YYYY e.g. MAY 03th, 2020 or MAY 03 2020
-    let m = s.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/i);
+    // Month DD, YYYY e.g. MAY 03th, 2020 or MAY 03,2000 or MAY 03 2020
+    let m = s.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?[\s,]+(20\d{2})\b/i);
     if (m && MONTHS[m[1].toLowerCase()]) {
       return `${m[3]}-${MONTHS[m[1].toLowerCase()]}-${pad2(m[2])}`;
     }
 
     // DD Month YYYY (e.g. 14 November 2026 or 15th Dec, 2026)
-    m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(20\d{2})\b/i);
+    m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)[\s,]+(20\d{2})\b/i);
     if (m && MONTHS[m[2].toLowerCase()]) {
       return `${m[3]}-${MONTHS[m[2].toLowerCase()]}-${pad2(m[1])}`;
     }
@@ -473,6 +473,56 @@
   /**
    * Bộ bóc tách thông minh Hợp đồng Ngoại thương -> Dữ liệu SWIFT MT700
    */
+  function parseEnglishWordsToAmount(rawWords) {
+    if (!rawWords) return '';
+    const words = String(rawWords)
+      .toUpperCase()
+      .replace(/[^A-Z\s-]/g, ' ')
+      .replace(/-/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const units = {
+      ZERO: 0, ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5,
+      SIX: 6, SEVEN: 7, EIGHT: 8, NINE: 9, TEN: 10,
+      ELEVEN: 11, TWELVE: 12, THIRTEEN: 13, FOURTEEN: 14, FIFTEEN: 15,
+      SIXTEEN: 16, SEVENTEEN: 17, EIGHTEEN: 18, NINETEEN: 19
+    };
+    const tens = {
+      TWENTY: 20, THIRTY: 30, FORTY: 40, FOURTY: 40, FIFTY: 50,
+      SIXTY: 60, SEVENTY: 70, EIGHTY: 80, NINETY: 90
+    };
+    const scales = {
+      THOUSAND: 1000,
+      MILLION: 1000000,
+      BILLION: 1000000000
+    };
+
+    let total = 0;
+    let current = 0;
+    let matchedAny = false;
+
+    for (const w of words) {
+      if (w === 'AND' || w === 'ONLY' || w === 'CENTS' || w === 'CENT') continue;
+      if (units[w] !== undefined) {
+        current += units[w];
+        matchedAny = true;
+      } else if (tens[w] !== undefined) {
+        current += tens[w];
+        matchedAny = true;
+      } else if (w === 'HUNDRED') {
+        current = (current || 1) * 100;
+        matchedAny = true;
+      } else if (scales[w]) {
+        total += (current || 1) * scales[w];
+        current = 0;
+        matchedAny = true;
+      }
+    }
+    total += current;
+    return matchedAny && total > 0 ? String(total) : '';
+  }
+
   function parseSalesContractText(rawText) {
     const text = String(rawText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -506,14 +556,15 @@
       /(?:Sales\s*Contract\s*No\.?|Contract\s*No\.?|Contract\s*Number|Số\s*hợp\s*đồng)\s*[:#\-]?\s*([A-Z0-9\-\/_.]{3,40})/i,
       /20:\s*(?:Documentary\s*Credit\s*Number)?\s*\n?\s*([A-Z0-9\-\/_.]{4,40})/i,
       /:20:([A-Z0-9\-\/_.]{4,40})/i,
-      /(?:No\.?)\s*[:#]\s*([A-Z0-9\-\/_.]{4,40})/i
+      /(?:^|\n)\s*No\.?\s*[:#\-]?\s*([A-Z0-9\-\/_.]{4,40})/i
     ]);
 
     const contractDateRaw = findFirst([
       /31C:\s*(?:Date\s*of\s*Issue)?\s*\n?\s*([0-9\/\-]{6,15})/i,
       /:31C:(\d{6})/i,
-      /(?:Contract\s*Date|Date\s*of\s*Contract|Dated|Ngày\s*ký)\s*[:\-]?\s*([^\n;]{6,35})/i,
-      /\bDate\s*[:\-]\s*([^\n;]{6,35})/i
+      /(?:Contract\s*Date|Date\s*of\s*Contract|Ngày\s*ký)\s*[:\-]?\s*([^\n;]{6,35})/i,
+      /(?:^|\n)\s*Date\s*[:\-]?\s*([^\n;]{6,35})/i,
+      /\bDated\s*[:\-]?\s*([^\n;]{6,35})/i
     ]);
     const contractDate = normalizeDateToIso(contractDateRaw);
 
@@ -521,14 +572,13 @@
       const bLines = blockText.split('\n').map(l => l.trim()).filter(Boolean);
       const cleaned = [];
       for (const l of bLines) {
-        if (/^(BETWEEN|AND|BÊN\s*BÁN|BÊN\s*MUA)\b/i.test(l) && cleaned.length === 0) {
-          const rest = l.replace(/^(BETWEEN|AND|BÊN\s*BÁN|BÊN\s*MUA)[:\s-]*/i, '').trim();
-          if (rest) cleaned.push(rest);
+        if ((/^(BETWEEN|AND|BÊN\s*BÁN|BÊN\s*MUA)\b/i.test(l) || l.length <= 4) && cleaned.length === 0) {
+          const rest = l.replace(/^(BETWEEN|AND|A[A-Z]{1,3}|BÊN\s*BÁN|BÊN\s*MUA)[:\s-]*/i, '').trim();
+          if (rest && rest.length > 4) cleaned.push(rest);
           continue;
         }
-        if (/HEREINAFTER\s+CALLED/i.test(l)) break;
-        if (/^(TEL|FAX|EMAIL|MST|TAX|BANKER|ACCOUNT|SWIFT|REPRESENTED|ATTN)\b/i.test(l)) continue;
-        cleaned.push(l.replace(/^(ADDRESS|ADD|ĐỊA\s*CHỈ)\s*[:\-]?\s*/i, '').trim());
+        if (/^(HEREINAFTER\s+CALLED|ACCOUNT|BANKER|SWIFT|REPRESENTED|TEL|FAX|EMAIL|MST|TAX|ATTN)\b/i.test(l)) break;
+        cleaned.push(l.replace(/^(ADDRESS|ADD|ĐỊA\s*CHỈ)\s*[:\-]?\s*/i, '').replace(/^[£$€]\s*/, 'E').trim());
       }
       const name = (cleaned[0] || '').trim();
       const address = cleaned.slice(1).join(', ').trim();
@@ -538,8 +588,10 @@
     let buyerBlock = { name: '', address: '' };
     let sellerBlock = { name: '', address: '' };
 
-    // 1. Nhận diện cấu trúc hợp đồng chuẩn quốc tế: BETWEEN ... SELLER AND ... BUYER
-    const preambleMatch = text.match(/BETWEEN\s+([\s\S]+?)\s+AND\s+([\s\S]+?)(?=\bIT IS MUTUALLY|\bARTICLE\b|\b1\.\s*COMMODITY|\b1\.\s*GOODS|\bNOW THEREFORE)/i);
+    // 1. Nhận diện cấu trúc hợp đồng chuẩn quốc tế: BETWEEN ... SELLER AND ... BUYER (chịu được lỗi OCR chữ AND -> Axp)
+    const explicitSellerBuyerMatch = text.match(/BETWEEN\s+([\s\S]+?HEREINAFTER\s+CALLED\s+["“']?THE\s+SELLER["”'.]*)\s*(?:\n\s*(?:AND|[A-Z]{2,4})\b)?\s*([\s\S]+?HEREINAFTER\s+CALLED\s+["“']?THE\s+BUYER["”'.]*)/i);
+    const preambleMatch = explicitSellerBuyerMatch
+      || text.match(/BETWEEN\s+([\s\S]+?)\s+AND\s+([\s\S]+?)(?=\bIT\s*IS\s*MUTUALLY|\bIT1S\s*MUTUALLY|\bARTICLE\b|\b1\.\s*COMMODITY|\b1\.\s*GOODS|\bNOW\s*THEREFORE)/i);
     if (preambleMatch) {
       const block1 = preambleMatch[1];
       const block2 = preambleMatch[2];
@@ -589,9 +641,10 @@
     }
 
     // Tiền tệ & Tổng trị giá
-    let currency = 'USD';
+    let currency = '';
     let amount = '';
-    const totalInCurrencyMatch = text.match(/TOTAL\s+IN\s+([A-Z]{3})\s*[:\-]?\s*(?:[\d]+\s*\|\s*)?([\d,.]+)/i);
+    const totalInCurrencyMatch = text.match(/TOTAL\s+IN\s+([A-Z]{3})\s*[:\-]?\s*(?:[\d]+\s*(?:\||[\s]+))?([\d,]{3,}(?:\.\d{1,2})?)/i)
+      || text.match(/TOTAL\s+IN\s+([A-Z]{3})\s*[:\-]?\s*(?:[\d]+\s*\|\s*)?([\d,.]+)/i);
     const fin32BMatch = text.match(/32B:\s*Currency\s*Code,\s*Amount[\s\S]{0,60}?Currency\s*:\s*([A-Z]{3})[\s\S]{0,60}?Amount\s*:\s*([\d,.]+)/i)
       || text.match(/:32B:([A-Z]{3})([\d,.]+)/i);
     const amountMatch = totalInCurrencyMatch
@@ -602,7 +655,7 @@
       currency = totalInCurrencyMatch[1].toUpperCase();
       amount = totalInCurrencyMatch[2].replace(/,/g, '');
     } else if (amountMatch) {
-      currency = (amountMatch[1] || amountMatch[3] || 'USD').toUpperCase();
+      currency = (amountMatch[1] || amountMatch[3] || '').toUpperCase();
       let rawAmt = String(amountMatch[2]);
       if (/^\d{1,3}(\.\d{3})+,\d{2}$/.test(rawAmt)) {
         rawAmt = rawAmt.replace(/\./g, '').replace(',', '.');
@@ -612,6 +665,36 @@
         rawAmt = rawAmt.replace(/,/g, '');
       }
       amount = rawAmt;
+    }
+
+    // Dự phòng cực mạnh cho OCR bảng biểu bị vỡ: Đọc từ dòng chữ "SAY: EUROS FORTY EIGHT THOUSAND..."
+    const sayMatch = text.match(/SAY\s*[:\-]?\s*(EUROS?|EUR|U\.?S\.?\s*DOLLARS?|USD|JAPANESE\s*YEN|JPY|POUNDS?\s*STERLING|GBP|SINGAPORE\s*DOLLARS?|SGD|AUSTRALIAN\s*DOLLARS?|AUD|CHINESE\s*YUAN|RMB|CNY|VND)\s+([^\n.]{5,120})/i);
+    if (sayMatch) {
+      const rawSayCurr = sayMatch[1].toUpperCase();
+      let sayCurr = 'USD';
+      if (rawSayCurr.startsWith('EUR')) sayCurr = 'EUR';
+      else if (rawSayCurr.includes('YEN') || rawSayCurr === 'JPY') sayCurr = 'JPY';
+      else if (rawSayCurr.includes('POUND') || rawSayCurr === 'GBP') sayCurr = 'GBP';
+      else if (rawSayCurr.includes('SINGAPORE') || rawSayCurr === 'SGD') sayCurr = 'SGD';
+      else if (rawSayCurr.includes('AUSTRALIAN') || rawSayCurr === 'AUD') sayCurr = 'AUD';
+      else if (rawSayCurr.includes('YUAN') || rawSayCurr === 'RMB' || rawSayCurr === 'CNY') sayCurr = 'CNY';
+      else if (rawSayCurr === 'VND') sayCurr = 'VND';
+
+      if (!currency) currency = sayCurr;
+      if (!amount || Number(amount) < 100) {
+        const parsedWordsAmt = parseEnglishWordsToAmount(sayMatch[2]);
+        if (parsedWordsAmt) amount = parsedWordsAmt;
+      }
+    }
+
+    // Quét ngữ cảnh đồng tiền trong bảng giá hoặc điều khoản thanh toán nếu vẫn chưa bắt được
+    if (!currency) {
+      if (/\(EUR\s*\)|\bEUROS?\b|\bEUR\b/i.test(text) && !/\bUSD\b/i.test(text)) currency = 'EUR';
+      else if (/\(JPY\s*\)|\bYEN\b|\bJPY\b/i.test(text) && !/\bUSD\b/i.test(text)) currency = 'JPY';
+      else if (/\(GBP\s*\)|\bGBP\b/i.test(text) && !/\bUSD\b/i.test(text)) currency = 'GBP';
+      else if (/\(CNY\s*\)|\bCNY\b|\bRMB\b/i.test(text) && !/\bUSD\b/i.test(text)) currency = 'CNY';
+      else if (/\(SGD\s*\)|\bSGD\b/i.test(text) && !/\bUSD\b/i.test(text)) currency = 'SGD';
+      else currency = 'USD';
     }
 
     // Dung sai
@@ -650,14 +733,14 @@
       /:44E:([^\n]{3,80})/i,
       /(?:Port\s*of\s*Loading|Loading\s*Port|POL|Cảng\s*xếp\s*hàng)\s*[:\-]?\s*([^\n|;]{3,80})/i,
       /(?:From)\s*[:]\s*([^\n|;]{3,80})/i
-    ]).replace(/\.$/, '').trim();
+    ]).replace(/['`’]/g, ' ').replace(/\s{2,}/g, ' ').replace(/\.$/, '').trim();
 
     const portOfDischarge = findFirst([
       /44F:\s*Port\s*of\s*Disch(?:a)?rge[^\n]*\n\s*([^\n]{3,80})/i,
       /:44F:([^\n]{3,80})/i,
       /(?:Destination\s*Port|Port\s*of\s*Destination|Port\s*of\s*Discharge|Discharge\s*Port|POD|Cảng\s*dỡ\s*hàng|Cảng\s*đến)\s*[:\-]?\s*([^\n|;]{3,80})/i,
       /(?:To)\s*[:]\s*([^\n|;]{3,80})/i
-    ]).replace(/\.$/, '').trim();
+    ]).replace(/['`’]/g, ' ').replace(/\s{2,}/g, ' ').replace(/\.$/, '').trim();
 
     // Ngày giao hàng muộn nhất
     const shipDateRaw = findFirst([
@@ -710,7 +793,7 @@
 
     // 1. Tìm trong điều khoản 4. PAYMENT hoặc BANKER của Người thụ hưởng
     const payClause = findFirst([
-      /(?:4\.\s*PAYMENT|PAYMENT(?:\s*TERMS?)?)\s*[:\-]?\s*([\s\S]{10,500}?)(?=\n\s*(?:5\.|DOCUMENTS|WARRANTY|ARBITRATION)|$)/i
+      /(?:4\.?\s*PAYMENT|PAYMENT(?:\s*TERMS?)?)\s*[:\-]?\s*([\s\S]{10,600}?)(?=\n\s*(?:5\.?\s*DOCUMENTS|DOCUMENTS|WARRANTY|ARBITRATION)|$)/i
     ]);
     if (payClause) {
       const bMatch = payClause.match(/BANKER\s*[:\-]?\s*([^\n,]{3,80}(?:,[^\n]{3,80})?)/i);
@@ -744,8 +827,8 @@
     let goodsDescription = findFirst([
       /45A:\s*Description\s*of\s*Goods\/Services\s*\n([\s\S]{5,600}?)(?=\n\s*(?:46A:|:46A:))/i,
       /:45A:([\s\S]{5,600}?)(?=\n\s*:46A:)/i,
-      /(?:Description\s*of\s*Goods|Commodity(?:\s*&\s*Specification)?|Goods\s*Description|Tên\s*hàng(?:\s*và\s*quy\s*cách)?)\s*[:\-]?\s*([\s\S]{5,450}?)(?=\n\s*(?:Quantity|Unit\s*Price|Total|Amount|Price|Packing|Shipment|Payment|Article\s*\d))/i,
-      /(?:Commodity(?:\s*name)?|Description\s*of\s*Goods|Tên\s*hàng)\s*[:\-]?\s*([^\n]{5,200})/i
+      /(?:Description\s*of\s*Goods|Commodity(?:\s*&\s*Specification)?(?![-\s:]*SPECIFICATION)|Goods\s*Description|Tên\s*hàng(?:\s*và\s*quy\s*cách)?)\s*[:\-]?\s*([\s\S]{5,450}?)(?=\n\s*(?:Quantity|Unit\s*Price|Total|Amount|Price|Packing|Shipment|Payment|Article\s*\d))/i,
+      /(?:Commodity(?:\s*name)?(?![-\s:]*SPECIFICATION)|Description\s*of\s*Goods|DESCRIPTION|Tên\s*hàng)[\s.:"”'\-]*(?:\n\s*)?(?:ITEM\s*\|\s*)?([^\n|]{5,200})/i
     ]);
     if (goodsDescription) {
       goodsDescription = goodsDescription
