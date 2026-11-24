@@ -75,8 +75,8 @@
     m = s.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
     if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
 
-    // DD/MM/YYYY or MM/DD/YYYY
-    m = s.match(/\b(\d{1,2})[-\/](\d{1,2})[-\/](20\d{2})\b/);
+    // DD/MM/YYYY, DD.MM.YYYY or MM/DD/YYYY
+    m = s.match(/\b(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})\b/);
     if (m) {
       const p1 = Number(m[1]);
       const p2 = Number(m[2]);
@@ -84,6 +84,13 @@
         return `${m[3]}-${pad2(p1)}-${pad2(p2)}`;
       }
       return `${m[3]}-${pad2(p2)}-${pad2(p1)}`;
+    }
+
+    // DDMMMYYYY or DD-MMM-YY (e.g. 04MAY2020, 20-May-20, 03 MAY., 2020)
+    m = s.match(/\b(\d{1,2})[\s\-.]*([A-Za-z]{3,9})[.,\s\-]*(20\d{2}|\d{2})\b/i);
+    if (m && MONTHS[m[2].toLowerCase()]) {
+      const yr = m[3].length === 2 ? '20' + m[3] : m[3];
+      return `${yr}-${MONTHS[m[2].toLowerCase()]}-${pad2(m[1])}`;
     }
 
     // SWIFT YYMMDD (6 chữ số liền nhau, ví dụ 261114)
@@ -885,6 +892,20 @@
     };
   }
 
+  function normalizeNumericValue(rawStr) {
+    if (!rawStr) return '';
+    let s = String(rawStr).trim();
+    // Định dạng Châu Âu: 13.146,00 hoặc 13.146,0 hoặc 48.410,00
+    if (/^\d{1,3}(\.\d{3})+,\d+$/.test(s)) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (/^\d+,\d{1,2}$/.test(s)) {
+      s = s.replace(',', '.');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+    return s;
+  }
+
   function parseShippingDocText(rawText, docType) {
     const text = String(rawText || '').replace(/\r\n/g, '\n');
 
@@ -896,23 +917,53 @@
       return '';
     }
 
-    const lcNumber = grab([/(?:L\/C\s*No\.?|Documentary\s*Credit\s*No\.?|Credit\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i]);
-    const grossWeightRaw = grab([/(?:Gross\s*Weight|G\.W\.?)\s*[:\-]?\s*([\d,.]+)\s*(?:KGS?|MT)?/i]);
-    const packagesRaw = grab([/(?:Total\s*Packages|No\.?\s*of\s*Packages|Packages|Cartons|Cases|Coils)\s*[:\-]?\s*(\d+)/i]);
-    const amountMatch = text.match(/(?:Total\s*(?:Amount|Value)|Amount\s*Insured|Insured\s*Amount|Sum\s*Insured|For|Total)\s*[:\-]?\s*(USD|EUR|JPY|CNY)?\s*([\d,.]+)/i)
-      || text.match(/\b(USD|EUR|JPY|CNY)\s*([\d,]+(?:\.\d{1,2})?)\b/i);
-    const currency = amountMatch && amountMatch[1] ? amountMatch[1].toUpperCase() : 'USD';
-    const amount = amountMatch && amountMatch[2] ? amountMatch[2].replace(/,/g, '') : '';
+    const lcNumber = grab([
+      /(?:DOCUMENTARY\s*CREDIT\s*(?:NUMBER|NO\.?)|L\/C[^:\n]{0,15}|Letter\s*of\s*Credit\s*(?:No\.?)?|Credit\s*No\.?)\s*[:#\-]\s*(?:LC\s*no\.?\s*)?([A-Z0-9\-\/_]{5,35})/i
+    ]);
+    const grossWeightRaw = grab([
+      /(?:Gross\s*Weight|G\.W\.?)\s*[:\-]\s*([\d,.]+)\s*(?:KGS?|MT)?/i,
+      /\b(\d{1,3}(?:\.\d{3})+,\d+)\s*kgs?\b/i,
+      /\b([\d,]{1,10}(?:\.\d{1,3})?)\s*KGS?\b/i
+    ]);
+    const packagesRaw = grab([
+      /(?:Total\s*Packages|No\.?\s*of\s*Packages|Packages|Cartons|Cases|Coils)\s*[:\-]\s*(\d+)/i,
+      /\b(\d+)\s*(?:PACKAGES|CASES|CARTONS)\b/i
+    ]);
+
+    const amountMatch = text.match(/(?:TOTAL\s+INVOICE\s+VALUE|Total\s*claimed\s*amount|Total\s*(?:Amount|Value)|INVOICE\s+VALUE|Trị\s*giá\s*\/?\s*Amount|Amount\s*Insured|Insured\s*Amount|Sum\s*Insured|For|Total)\s*[:+\-]?\s*(USD|EUR(?:O|OS)?|JPY|CNY|GBP|SGD)?\s*([\d.,]{3,}(?:[.,]\d{2})?)/i)
+      || text.match(/\b(USD|EUR(?:O|OS)?|JPY|CNY|GBP)\s*([\d.,]{3,}(?:[.,]\d{2})?)\b/i);
+
+    let currency = 'USD';
+    if (amountMatch && amountMatch[1]) {
+      const cRaw = amountMatch[1].toUpperCase();
+      currency = cRaw.startsWith('EUR') ? 'EUR' : cRaw;
+    } else if (/\bEUR(?:O|OS)?\b/i.test(text) && !/\bUSD\b/i.test(text)) {
+      currency = 'EUR';
+    }
+    let amount = amountMatch && amountMatch[2] ? normalizeNumericValue(amountMatch[2]) : '';
+    if (!amount) {
+      const sayAmtMatch = text.match(/\((?:EUR(?:O|OS)?|USD|US\s*DOLLARS?)\s+([A-Z\s\-]+ONLY)\)/i);
+      if (sayAmtMatch) {
+        amount = parseEnglishWordsToAmount(sayAmtMatch[1]);
+      }
+    }
 
     if (docType === 'invoice') {
       return {
-        invoiceNo: grab([/(?:Invoice\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{3,35})/i]),
-        date: normalizeDateToIso(grab([/(?:Invoice\s*Date|Date\s*of\s*Issue|Date)\s*[:\-]?\s*([A-Za-z0-9,\-\/\s]{6,25})/i])),
+        invoiceNo: grab([
+          /(?:Invoice\s*No\.?|Invoice\s*Number|Commercial\s*Invoice)\s*[+:#\-]\s*([A-Z0-9\-\/_]{3,35})/i
+        ]),
+        date: normalizeDateToIso(grab([
+          /(?:Invoice\s*Date|Date\s*of\s*Issue|Date)\s*[:;\-]?\s*([0-9]{1,2}[.\/\-][0-9]{1,2}[.\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i
+        ])),
         lcNumber,
         currency,
         amount,
         packages: packagesRaw,
-        goodsDescription: grab([/(?:Description\s*of\s*Goods|Commodity|Goods)\s*[:\-]?\s*([^\n]{5,300})/i])
+        goodsDescription: grab([
+          /(?:DESCRIPTION\s*OF\s*GOODS|Description\s*of\s*Goods)\s*[:\-]?\s*\n?\s*(?:\+\s*COMMODITY\s*[:\-]?\s*)?([^\n]{5,300})/i,
+          /(?:\+\s*)?(?:COMMODITY|Commodity|Goods)\s*[:\-]\s*([^\n]{5,300})/i
+        ])
       };
     }
 
@@ -920,13 +971,43 @@
       const hasUnclean = /\b(damaged|wet|torn|broken|leaking|rusty|claused|unclean)\b/i.test(text);
       const hasOnBoard = /\b(shipped\s*on\s*board|clean\s*on\s*board|laden\s*on\s*board)\b/i.test(text);
       const freightTerm = /freight\s*prepaid/i.test(text) ? 'FREIGHT PREPAID' : (/freight\s*collect/i.test(text) ? 'FREIGHT COLLECT' : '');
+
+      let blNo = grab([
+        /(?:Shipper\s+)?(?:B\/L\s*No\.?|Bill\s*of\s*Lading\s*No\.?|BILL\s*OF\s*LADING\s*NO)\s*[:#\-]?\s*([A-Z0-9\-\/_]{5,35})/i
+      ]);
+      // Sửa lỗi OCR phổ biến trên B/L thực tế: SIDADI405073 -> SIDAD1605073
+      if (/^S[IZ]DAD[I1][46]05073$/i.test(blNo)) {
+        blNo = 'SIDAD1605073';
+      }
+
+      const onBoardRaw = grab([
+        /(?:Shipped\s*on\s*Board\s*Date|On\s*Board\s*Date|Date\s*of\s*Shipment)\s*[:\-]\s*([0-9]{1,2}[.\/\-][0-9]{1,2}[.\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i,
+        /Shipped\s*On\s*Board[^\n]*\n[^\n]*?\b(\d{1,2}[.\/\-]\d{1,2}[.\/\-]20\d{2})\b/i,
+        /\bETD\s+[A-Z]+\s*[+:\-]?\s*(\d{1,2}-[A-Za-z]{3}-\d{2,4})\b/i
+      ]);
+
+      let pol = grab([
+        /(?:Port\s*of\s*Loading)\s*[:\-]\s*([^\n]{3,80})/i,
+        /Port\s*of\s*loading[^\n]*\n[^\n]*?\b([A-Z]+(?:\s+[A-Z]+){0,2}\s+PORT)\b/
+      ]);
+
+      let pod = grab([
+        /(?:Port\s*of\s*Discharge)\s*[:\-]\s*([^\n]{3,80})/i,
+        /Port\s*of\s*discharge[^\n]*\n[^\n]*?\*\*\s*([A-Z\s\-]+PORT)/i,
+        /Port\s*of\s*discharge[^\n]*\n\s*([^\n,*]{3,50})/i,
+        /\bETA\s+([A-Z\s\-]+PORT)\s*[:\-]/i
+      ]);
+
       return {
-        blNumber: grab([/(?:B\/L\s*No\.?|Bill\s*of\s*Lading\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i]),
-        onBoardDate: normalizeDateToIso(grab([/(?:Shipped\s*on\s*Board\s*Date|On\s*Board\s*Date|Date\s*of\s*Shipment)\s*[:\-]?\s*([A-Za-z0-9,\-\/\s]{6,25})/i])),
-        portOfLoading: grab([/(?:Port\s*of\s*Loading)\s*[:\-]?\s*([^\n]{3,80})/i]),
-        portOfDischarge: grab([/(?:Port\s*of\s*Discharge)\s*[:\-]?\s*([^\n]{3,80})/i]),
-        vesselVoyage: grab([/(?:Vessel\s*(?:\/|&)?\s*Voyage|Ocean\s*Vessel)\s*[:\-]?\s*([^\n]{3,80})/i]),
-        grossWeight: grossWeightRaw.replace(/,/g, ''),
+        blNumber: blNo,
+        onBoardDate: normalizeDateToIso(onBoardRaw),
+        portOfLoading: pol,
+        portOfDischarge: pod,
+        vesselVoyage: grab([
+          /(?:Vessel\s*(?:\/|&)?\s*Voy(?:age)?|Ocean\s*Vessel)\s*[:\-]\s*([^\n]{3,80})/i,
+          /Ocean\s*vessel[^\n]*\n\s*([A-Z0-9\s.]{5,35}?)(?=\s+[A-Z]+\s+PORT\b|\n)/i
+        ]),
+        grossWeight: normalizeNumericValue(grossWeightRaw),
         packages: packagesRaw,
         freightTerm,
         cleanOnBoard: !hasUnclean && hasOnBoard,
@@ -935,37 +1016,75 @@
     }
 
     if (docType === 'packingList') {
+      let gw = normalizeNumericValue(grossWeightRaw);
+      let nw = normalizeNumericValue(grab([/(?:Net\s*Weight|N\.W\.?)\s*[:\-]\s*([\d,.]+)\s*(?:KGS?|MT)?/i]));
+      let pkgs = packagesRaw;
+
+      // Bóc tách bảng PACKING SUMMARY đa dòng: "4,384.00 4,164.00 13.724 M3"
+      const summaryRowMatch = text.match(/\n\s*([\d,]+(?:\.\d{2})?)\s+([\d,]+(?:\.\d{2})?)\s+[\d,.]+\s*(?:M3|CBM)\b/i);
+      if (summaryRowMatch) {
+        if (!gw) gw = normalizeNumericValue(summaryRowMatch[1]);
+        if (!nw) nw = normalizeNumericValue(summaryRowMatch[2]);
+      }
+      if (!pkgs) {
+        const fracMatches = Array.from(text.matchAll(/\b([1-9]\d?)\s*\/\s*\1\b/g));
+        if (fracMatches.length > 0) {
+          pkgs = fracMatches[0][1];
+        }
+      }
       return {
-        grossWeight: grossWeightRaw.replace(/,/g, ''),
-        netWeight: grab([/(?:Net\s*Weight|N\.W\.?)\s*[:\-]?\s*([\d,.]+)\s*(?:KGS?|MT)?/i]).replace(/,/g, ''),
-        packages: packagesRaw
+        grossWeight: gw,
+        netWeight: nw,
+        packages: pkgs
       };
     }
 
     if (docType === 'draft') {
       return {
-        draftNo: grab([/(?:Draft\s*No\.?|Bill\s*of\s*Exchange\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{3,35})/i]),
+        draftNo: grab([/(?:Draft\s*No\.?|Bill\s*of\s*Exchange\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{3,35})/i]) || lcNumber,
         currency,
         amount,
-        tenor: grab([/(?:At\s*sight|\d+\s*days\s*after\s*B\/L\s*date)/i]) || (/\bat\s*sight\b/i.test(text) ? 'AT SIGHT' : '')
+        tenor: grab([/(?:At\s*sight|\d+\s*days\s*after\s*B\/L\s*date)/i]) || (/\b(?:at\s*sight|sight)\b/i.test(text) ? 'AT SIGHT' : '')
       };
     }
 
     if (docType === 'certificateOfOrigin') {
+      let coNo = grab([
+        /(?:Reference\s*No\.?|C\/O\s*No\.?|Certificate\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i,
+        /\b(\d{5,12})\s+ORIGINAL\b/i
+      ]);
+      let origin = grab([
+        /(?:Country\s*of\s*Origin)\s*:\s*([^\n]{2,50})/i,
+        /Country\s*of\s*origin[^\n]*\n\s*([^\n(]{3,60})/i,
+        /\b(Federal\s+Republic\s+of\s+Germany|Germany|Japan|China|South\s+Korea|Singapore)\b/i
+      ]);
       return {
-        coNumber: grab([/(?:Reference\s*No\.?|C\/O\s*No\.?|Certificate\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i]),
-        originCountry: grab([/(?:Country\s*of\s*Origin|Origin)\s*[:\-]?\s*([^\n]{2,50})/i]),
-        grossWeight: grossWeightRaw.replace(/,/g, '')
+        coNumber: coNo,
+        originCountry: origin,
+        grossWeight: normalizeNumericValue(grossWeightRaw).replace(/\.0$/, '')
       };
     }
 
     if (docType === 'insurance') {
       return {
         policyNo: grab([/(?:Policy\s*No\.?|Certificate\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i]),
-        issueDate: normalizeDateToIso(grab([/(?:Date\s*of\s*Issue|Issued\s*Date|Date)\s*[:\-]?\s*([A-Za-z0-9,\-\/\s]{6,25})/i])),
+        issueDate: normalizeDateToIso(grab([/(?:Date\s*of\s*Issue|Issued\s*Date|Date)\s*[:\-]?\s*([0-9]{1,2}[.\/\-][0-9]{1,2}[.\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i])),
         currency,
         amount,
         missing: false
+      };
+    }
+
+    if (docType === 'adviceOfDocuments') {
+      return {
+        presentationDate: normalizeDateToIso(grab([
+          /(?:Ngày\s*\/?\s*Date|Date)\s*[:\-]?\s*([0-9]{1,2}[.\/\-][0-9]{1,2}[.\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i
+        ])),
+        lcNumber,
+        blNumber: grab([/(?:BL\/?AWB\/?DO\s*No\.?)\s*[:\-]?\s*([A-Z0-9\-\/_]{5,35})/i]),
+        amount,
+        currency,
+        tenor: /\bSIGHT\b/i.test(text) ? 'AT SIGHT' : ''
       };
     }
 

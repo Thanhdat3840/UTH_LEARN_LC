@@ -774,50 +774,86 @@
   }
 
   function writePresentedDocsToDom(parsedMap) {
+    function setDocVal(id, val) {
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        const node = el(id);
+        if (node) {
+          node.value = val;
+          node.classList.add('autofilled');
+        }
+      }
+    }
+
+    if (parsedMap.adviceOfDocuments) {
+      const adv = parsedMap.adviceOfDocuments;
+      if (adv.presentationDate) setDocVal('docPresentationDate', adv.presentationDate);
+      if (!parsedMap.draft || !parsedMap.draft.amount) {
+        parsedMap.draft = Object.assign({
+          draftNo: adv.lcNumber || adv.blNumber || 'DRAFT-01',
+          amount: adv.amount,
+          tenor: adv.tenor || 'AT SIGHT'
+        }, parsedMap.draft || {});
+      }
+    }
+
     if (parsedMap.invoice) {
       const i = parsedMap.invoice;
-      if (i.invoiceNo !== undefined) el('docInvNo').value = i.invoiceNo;
-      if (i.date !== undefined) el('docInvDate').value = i.date;
-      if (i.lcNumber !== undefined) el('docInvLcNo').value = i.lcNumber;
-      if (i.amount !== undefined) el('docInvAmount').value = i.amount;
-      if (i.packages !== undefined) el('docInvPackages').value = i.packages;
-      if (i.currency !== undefined) el('docInvCurrency').value = i.currency;
-      if (i.goodsDescription !== undefined) el('docInvGoods').value = i.goodsDescription;
+      setDocVal('docInvNo', i.invoiceNo);
+      setDocVal('docInvDate', i.date);
+      setDocVal('docInvLcNo', i.lcNumber);
+      setDocVal('docInvAmount', i.amount);
+      setDocVal('docInvPackages', i.packages);
+      setDocVal('docInvCurrency', i.currency);
+      setDocVal('docInvGoods', i.goodsDescription);
     }
     if (parsedMap.billOfLading) {
       const b = parsedMap.billOfLading;
-      if (b.blNumber !== undefined) el('docBlNo').value = b.blNumber;
-      if (b.onBoardDate !== undefined) el('docBlOnBoardDate').value = b.onBoardDate;
-      if (b.portOfLoading !== undefined) el('docBlPol').value = b.portOfLoading;
-      if (b.portOfDischarge !== undefined) el('docBlPod').value = b.portOfDischarge;
-      if (b.grossWeight !== undefined) el('docBlGrossWeight').value = b.grossWeight;
-      if (b.packages !== undefined) el('docBlPackages').value = b.packages;
-      if (b.freightTerm) el('docBlFreightTerm').value = b.freightTerm;
-      if (b.cleanOnBoard !== undefined) el('docBlClean').value = b.cleanOnBoard ? 'true' : 'false';
+      setDocVal('docBlNo', b.blNumber);
+      setDocVal('docBlOnBoardDate', b.onBoardDate);
+      setDocVal('docBlPol', b.portOfLoading);
+      setDocVal('docBlPod', b.portOfDischarge);
+      setDocVal('docBlGrossWeight', b.grossWeight);
+      setDocVal('docBlPackages', b.packages);
+      if (b.freightTerm) setDocVal('docBlFreightTerm', b.freightTerm);
+      if (b.cleanOnBoard !== undefined) setDocVal('docBlClean', b.cleanOnBoard ? 'true' : 'false');
     }
     if (parsedMap.packingList) {
       const p = parsedMap.packingList;
-      if (p.grossWeight !== undefined) el('docPlGrossWeight').value = p.grossWeight;
-      if (p.netWeight !== undefined) el('docPlNetWeight').value = p.netWeight;
-      if (p.packages !== undefined) el('docPlPackages').value = p.packages;
+      setDocVal('docPlGrossWeight', p.grossWeight);
+      setDocVal('docPlNetWeight', p.netWeight);
+      setDocVal('docPlPackages', p.packages);
+      // Nếu Invoice chưa có số kiện, đồng bộ từ Packing List hoặc B/L
+      if (!el('docInvPackages').value && p.packages) {
+        setDocVal('docInvPackages', p.packages);
+      }
+    }
+    if (parsedMap.billOfLading && !el('docInvPackages').value && parsedMap.billOfLading.packages) {
+      setDocVal('docInvPackages', parsedMap.billOfLading.packages);
     }
     if (parsedMap.draft) {
       const d = parsedMap.draft;
-      if (d.draftNo !== undefined) el('docDraftNo').value = d.draftNo;
-      if (d.amount !== undefined) el('docDraftAmount').value = d.amount;
-      if (d.tenor !== undefined) el('docDraftTenor').value = d.tenor;
+      setDocVal('docDraftNo', d.draftNo);
+      setDocVal('docDraftAmount', d.amount);
+      setDocVal('docDraftTenor', d.tenor);
+    } else if (parsedMap.invoice && parsedMap.invoice.amount && !el('docDraftAmount').value) {
+      setDocVal('docDraftNo', parsedMap.invoice.invoiceNo || parsedMap.invoice.lcNumber || 'DRAFT-01');
+      setDocVal('docDraftAmount', parsedMap.invoice.amount);
+      setDocVal('docDraftTenor', 'AT SIGHT');
     }
     if (parsedMap.certificateOfOrigin) {
       const c = parsedMap.certificateOfOrigin;
-      if (c.coNumber !== undefined) el('docCoNo').value = c.coNumber;
-      if (c.originCountry !== undefined) el('docCoOrigin').value = c.originCountry;
-      if (c.grossWeight !== undefined) el('docCoGrossWeight').value = c.grossWeight;
+      setDocVal('docCoNo', c.coNumber);
+      setDocVal('docCoOrigin', c.originCountry);
+      setDocVal('docCoGrossWeight', c.grossWeight);
     }
     if (parsedMap.insurance) {
       const ins = parsedMap.insurance;
-      if (ins.policyNo !== undefined) el('docInsNo').value = ins.policyNo;
-      if (ins.issueDate !== undefined) el('docInsDate').value = ins.issueDate;
-      if (ins.amount !== undefined) el('docInsAmount').value = ins.amount;
+      setDocVal('docInsNo', ins.policyNo);
+      setDocVal('docInsDate', ins.issueDate);
+      setDocVal('docInsAmount', ins.amount);
+    }
+    if (!parsedMap.adviceOfDocuments && el('docBlOnBoardDate').value) {
+      setDocVal('docPresentationDate', Engine.addDaysIso(el('docBlOnBoardDate').value, 10));
     }
   }
 
@@ -884,12 +920,57 @@
 
   function detectDocTypeByFilenameAndText(filename, text) {
     const f = (filename || '').toLowerCase();
-    if (f.includes('invoice') || /^commercial\s*invoice/im.test(text)) return 'invoice';
-    if (f.includes('lading') || f.includes('bl') || /^bill\s*of\s*lading/im.test(text)) return 'billOfLading';
-    if (f.includes('packing') || /^packing\s*list/im.test(text)) return 'packingList';
-    if (f.includes('exchange') || f.includes('draft') || /^bill\s*of\s*exchange/im.test(text)) return 'draft';
-    if (f.includes('origin') || f.includes('co') || /certificate\s*of\s*origin/im.test(text)) return 'certificateOfOrigin';
-    if (f.includes('insurance') || /insurance\s*(policy|certificate)/im.test(text)) return 'insurance';
+    const t = String(text || '');
+
+    // 1. Ưu tiên nhận diện theo tên file nếu người dùng tải file có đặt tên rõ ràng
+    if (f.includes('invoice')) return 'invoice';
+    if (f.includes('lading') || /\bbl\d*\b/.test(f)) return 'billOfLading';
+    if (f.includes('packing')) return 'packingList';
+    if (f.includes('exchange') || f.includes('draft')) return 'draft';
+    if (f.includes('origin') || /\bco\b/.test(f)) return 'certificateOfOrigin';
+    if (f.includes('insurance')) return 'insurance';
+
+    // 2. Loại trừ các trang L/C MT700, Hợp đồng ngoại thương, C/Q hoặc Arrival Notice khi dán hàng loạt ảnh (Ctrl+V)
+    if (/Input\s*Message\s*Type\s*:\s*MT700|FORM\s*OF\s*DOCUMENTARY\s*CREDIT|:40A:|:46A:/i.test(t)) return null;
+    if (/HEREINAFTER\s+CALLED\s+["“']?THE\s+(?:SELLER|BUYER)|IT\s+IS\s+MUTUALLY\s+AGREED/i.test(t)) return null;
+    if (/ARRIVAL\s+NOTICE|GIẤY\s+BÁO\s+HÀNG\s+ĐẾN/i.test(t)) return null;
+    if (/WERKSBESCHEINIGUNG|ACCEPTANCE\s+TEST\s+CERTIFICATE/i.test(t)) return null;
+
+    // 3. Nhận diện Giấy báo chứng từ ngân hàng (Advice of Arrival of Documents)
+    if (/GI[ẤA]Y\s*B[ÁA]O\s*CH[ỨU]NG\s*T[ỪƯ]|ADVICE\s*OF\s*ARRIVAL\s*OF\s*DOCUMENTS/i.test(t)) {
+      return 'adviceOfDocuments';
+    }
+
+    // 4. Nhận diện Phiếu đóng gói (Packing List)
+    if (/\bPacking\s*List\s*[:#\-]?\s*\d+|\bPACKING\s+SUMMARY\b|\bDETAILS\s+ITEMS\s+FOR\s+PACKAGE|^packing\s*list\b/im.test(t)) {
+      return 'packingList';
+    }
+
+    // 5. Nhận diện Hóa đơn thương mại (Commercial Invoice)
+    if (/\bCommercial\s*Invoice\s*[:#\-]?\s*\d+|\bTOTAL\s+INVOICE\s+VALUE\b|\bInvoice\s*No\.?\s*[:#\-]\s*[A-Z0-9]+|^commercial\s*invoice\b/im.test(t)) {
+      return 'invoice';
+    }
+
+    // 6. Nhận diện Vận đơn đường biển (Marine / Ocean Bill of Lading)
+    if (/\bOCEAN\s+BILL\s+OF\s+LADING\b|\bShipper\s+B\/L\s+No|\bB\/L\s*No\.?\s*[:#\-]?\s*[A-Z0-9]{5,}|\bConsignee\s+or\s+order\b|^bill\s*of\s*lading\b/im.test(t) && !/\bSHIPPING\s+ADVIS[EC]\b/i.test(t)) {
+      return 'billOfLading';
+    }
+
+    // 7. Nhận diện Giấy chứng nhận xuất xứ (Certificate of Origin - C/O)
+    if (/\bCERTIFICAT\s+D'ORIGINE\b|\bURSPRUNGSZEUGNIS\b|\bCountry\s+of\s+origin\b|\bReference\s*No\.?\s*[:#\-]?\s*[A-Z0-9\-]+\s*\n[\s\S]{0,120}?CERTIFICATE\s*OF\s*ORIGIN|^certificate\s*of\s*origin\b/im.test(t)) {
+      return 'certificateOfOrigin';
+    }
+
+    // 8. Nhận diện Hối phiếu (Bill of Exchange / Draft)
+    if (/\bBILL\s+OF\s+EXCHANGE\b|\bFIRST\s+OF\s+EXCHANGE\b|\bDraft\s*No\.?\s*[:#\-]/im.test(t)) {
+      return 'draft';
+    }
+
+    // 9. Nhận diện Đơn bảo hiểm (Insurance Policy / Certificate)
+    if (/\bINSURANCE\s+(?:POLICY|CERTIFICATE)\b|\bCARGO\s+INSURANCE\b|\bSUM\s+INSURED\b/im.test(t)) {
+      return 'insurance';
+    }
+
     return null;
   }
 
