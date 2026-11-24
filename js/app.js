@@ -773,6 +773,35 @@
     };
   }
 
+  function clearPresentedDocsDom() {
+    const textIds = [
+      'docPresentationDate',
+      'docInvNo', 'docInvDate', 'docInvLcNo', 'docInvAmount', 'docInvPackages', 'docInvCurrency', 'docInvGoods',
+      'docBlNo', 'docBlOnBoardDate', 'docBlPol', 'docBlPod', 'docBlGrossWeight', 'docBlPackages',
+      'docPlGrossWeight', 'docPlNetWeight', 'docPlPackages',
+      'docDraftNo', 'docDraftAmount', 'docDraftTenor',
+      'docCoNo', 'docCoOrigin', 'docCoGrossWeight',
+      'docInsNo', 'docInsDate', 'docInsAmount'
+    ];
+    for (const id of textIds) {
+      const node = el(id);
+      if (node) {
+        node.value = '';
+        node.classList.remove('autofilled');
+      }
+    }
+    const selFreight = el('docBlFreightTerm');
+    if (selFreight) {
+      selFreight.value = 'FREIGHT PREPAID';
+      selFreight.classList.remove('autofilled');
+    }
+    const selClean = el('docBlClean');
+    if (selClean) {
+      selClean.value = 'true';
+      selClean.classList.remove('autofilled');
+    }
+  }
+
   function writePresentedDocsToDom(parsedMap) {
     function setDocVal(id, val) {
       if (val !== undefined && val !== null && String(val).trim() !== '') {
@@ -936,9 +965,12 @@
     if (/ARRIVAL\s+NOTICE|GIẤY\s+BÁO\s+HÀNG\s+ĐẾN/i.test(t)) return null;
     if (/WERKSBESCHEINIGUNG|ACCEPTANCE\s+TEST\s+CERTIFICATE/i.test(t)) return null;
 
-    // 3. Nhận diện Giấy báo chứng từ ngân hàng (Advice of Arrival of Documents)
+    // 3. Nhận diện Giấy báo chứng từ ngân hàng (Advice of Arrival of Documents) & Shipping Advice
     if (/GI[ẤA]Y\s*B[ÁA]O\s*CH[ỨU]NG\s*T[ỪƯ]|ADVICE\s*OF\s*ARRIVAL\s*OF\s*DOCUMENTS/i.test(t)) {
       return 'adviceOfDocuments';
+    }
+    if (/\bSHIPPING\s+ADVIS[EC]\b/i.test(t) || /\bPARTICULARS\s+OF\s+SHIPMENT\b/i.test(t)) {
+      return 'shippingAdvice';
     }
 
     // 4. Nhận diện Phiếu đóng gói (Packing List)
@@ -951,8 +983,10 @@
       return 'invoice';
     }
 
-    // 6. Nhận diện Vận đơn đường biển (Marine / Ocean Bill of Lading)
-    if (/\bOCEAN\s+BILL\s+OF\s+LADING\b|\bShipper\s+B\/L\s+No|\bB\/L\s*No\.?\s*[:#\-]?\s*[A-Z0-9]{5,}|\bConsignee\s+or\s+order\b|^bill\s*of\s*lading\b/im.test(t) && !/\bSHIPPING\s+ADVIS[EC]\b/i.test(t)) {
+    // 6. Nhận diện Vận đơn đường biển (Marine / Ocean Bill of Lading) — bỏ qua mặt sau toàn điều khoản nhỏ (BL2/BL3)
+    const hasBlCoreKeyword = /\bOCEAN\s+BILL\s+OF\s+LADING\b|\bShipper\s+B\/L\s+No|\bB\/L\s*No\.?\s*[:#\-]?\s*[A-Z0-9]{5,}|\bConsignee\s+or\s+order\b|^bill\s*of\s*lading\b/im.test(t);
+    const hasBlFrontData = /\b(?:Shipper|Port\s*of\s*loading|Port\s*of\s*discharge|Gross\s*weight|FREIGHT\s+(?:COLLECT|PREPAID))\b/i.test(t);
+    if (hasBlCoreKeyword && hasBlFrontData && !/\bSHIPPING\s+ADVIS[EC]\b/i.test(t)) {
       return 'billOfLading';
     }
 
@@ -1383,6 +1417,7 @@
 
       try {
         const map = {};
+        let shippingAdviceData = null;
         for (let i = 0; i < stage5Queue.length; i++) {
           const item = stage5Queue[i];
           if (btn) btn.textContent = `⏳ Đang đọc trang ${i + 1}/${stage5Queue.length}...`;
@@ -1392,18 +1427,41 @@
             }
           });
           const docType = detectDocTypeByFilenameAndText(item.name, text);
-          if (docType) {
+          if (docType === 'shippingAdvice') {
+            shippingAdviceData = Object.assign({}, shippingAdviceData || {}, Parser.parseShippingDocText(text, 'shippingAdvice'));
+          } else if (docType) {
             const parsedDoc = Parser.parseShippingDocText(text, docType);
             map[docType] = Object.assign({}, map[docType] || {}, Object.fromEntries(
               Object.entries(parsedDoc).filter(([_, v]) => v !== '' && v !== undefined && v !== null)
             ));
           }
         }
-        writePresentedDocsToDom(map);
-        if (status) {
-          status.textContent = `✅ Đã phân loại và điền dữ liệu cho ${Object.keys(map).length} loại chứng từ từ ${stage5Queue.length} trang!`;
+
+        // Bổ sung các trường còn trống trên B/L và Invoice từ Shipping Advice (không ghi đè dữ liệu gốc đã bóc được)
+        if (shippingAdviceData) {
+          map.billOfLading = map.billOfLading || {};
+          for (const k of ['blNumber', 'onBoardDate', 'portOfDischarge', 'portOfLoading']) {
+            if (!map.billOfLading[k] && shippingAdviceData[k]) {
+              map.billOfLading[k] = shippingAdviceData[k];
+            }
+          }
+          map.invoice = map.invoice || {};
+          for (const k of ['invoiceNo', 'amount', 'currency', 'lcNumber']) {
+            if (!map.invoice[k] && shippingAdviceData[k]) {
+              map.invoice[k] = shippingAdviceData[k];
+            }
+          }
         }
-        showToast(`Đã tự động phân loại và điền dữ liệu cho ${Object.keys(map).length} chứng từ.`);
+
+        clearPresentedDocsDom();
+        writePresentedDocsToDom(map);
+
+        const coreDocKeys = ['invoice', 'billOfLading', 'packingList', 'draft', 'certificateOfOrigin', 'insurance'];
+        const detectedCoreCount = coreDocKeys.filter(k => map[k] && Object.values(map[k]).some(v => v !== '' && v !== undefined && v !== null)).length;
+        if (status) {
+          status.textContent = `✅ Đã phân loại và điền dữ liệu cho ${detectedCoreCount} loại chứng từ từ ${stage5Queue.length} trang!`;
+        }
+        showToast(`Đã tự động phân loại và điền dữ liệu cho ${detectedCoreCount} chứng từ.`);
       } catch (err) {
         const msg = formatErrorMessage(err);
         if (status) status.textContent = `❌ Lỗi: ${msg}`;

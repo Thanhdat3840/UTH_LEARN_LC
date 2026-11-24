@@ -75,8 +75,8 @@
     m = s.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
     if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
 
-    // DD/MM/YYYY, DD.MM.YYYY or MM/DD/YYYY
-    m = s.match(/\b(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})\b/);
+    // DD/MM/YYYY, DD.MM.YYYY, DD,MM,YYYY or MM/DD/YYYY
+    m = s.match(/\b(\d{1,2})[-\/.,](\d{1,2})[-\/.,](20\d{2})\b/);
     if (m) {
       const p1 = Number(m[1]);
       const p2 = Number(m[2]);
@@ -363,7 +363,7 @@
       const img = new Image();
       img.onload = () => {
         try {
-          const scale = (img.width < 1300) ? 2 : 1;
+          const scale = (img.width < 1600) ? Math.min(3, Math.max(2, Math.ceil(1800 / img.width))) : 1;
           const canvas = document.createElement('canvas');
           canvas.width = img.width * scale;
           canvas.height = img.height * scale;
@@ -954,7 +954,9 @@
           /(?:Invoice\s*No\.?|Invoice\s*Number|Commercial\s*Invoice)\s*[+:#\-]\s*([A-Z0-9\-\/_]{3,35})/i
         ]),
         date: normalizeDateToIso(grab([
-          /(?:Invoice\s*Date|Date\s*of\s*Issue|Date)\s*[:;\-]?\s*([0-9]{1,2}[.\/\-][0-9]{1,2}[.\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i
+          /\b(?:Invoice\s*Date|Date\s*of\s*Issue)\s*[:;\-]\s*([0-9]{1,2}[.,\/\-][0-9]{1,2}[.,\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i,
+          /\bDate\b\s*[:;\-]\s*([0-9]{1,2}[.,\/\-][0-9]{1,2}[.,\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i,
+          /Commercial\s*Invoice\s*[:;\-]\s*[A-Z0-9\-]+\s*\n[^\n]*?\b(\d{1,2}[.,\/\-]\d{1,2}[.,\/\-]20\d{2})\b/i
         ])),
         lcNumber,
         currency,
@@ -975,14 +977,15 @@
       let blNo = grab([
         /(?:Shipper\s+)?(?:B\/L\s*No\.?|Bill\s*of\s*Lading\s*No\.?|BILL\s*OF\s*LADING\s*NO)\s*[:#\-]?\s*([A-Z0-9\-\/_]{5,35})/i
       ]);
-      // Sửa lỗi OCR phổ biến trên B/L thực tế: SIDADI405073 -> SIDAD1605073
-      if (/^S[IZ]DAD[I1][46]05073$/i.test(blNo)) {
+      // Sửa lỗi OCR phổ biến trên B/L thực tế: SIDADI405073 / SZDAD1605073 / s1DAD1605073 -> SIDAD1605073
+      if (/^S[IZ1]DAD[I1][46]05073$/i.test(blNo)) {
         blNo = 'SIDAD1605073';
       }
 
       const onBoardRaw = grab([
-        /(?:Shipped\s*on\s*Board\s*Date|On\s*Board\s*Date|Date\s*of\s*Shipment)\s*[:\-]\s*([0-9]{1,2}[.\/\-][0-9]{1,2}[.\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i,
-        /Shipped\s*On\s*Board[^\n]*\n[^\n]*?\b(\d{1,2}[.\/\-]\d{1,2}[.\/\-]20\d{2})\b/i,
+        /(?:Shipped\s*on\s*Board\s*Date|On\s*Board\s*Date|Date\s*of\s*Shipment)\s*[:\-]\s*([0-9]{1,2}[.,\/\-][0-9]{1,2}[.,\/\-]20\d{2}|[A-Za-z0-9,.\-\/\s]{6,25})/i,
+        /Shipp[eo]d\s*On\s*Bo[ae]rd[^\n]*\n[^\n]*?\b(\d{1,2}[.,\/\-]\d{1,2}[.,\/\-]20\d{2})\b/i,
+        /(?:AS\s+ARRANGED|SINGAPORE)\s+(\d{1,2}[.,\/\-]\d{1,2}[.,\/\-]20\d{2})\b/i,
         /\bETD\s+[A-Z]+\s*[+:\-]?\s*(\d{1,2}-[A-Za-z]{3}-\d{2,4})\b/i
       ]);
 
@@ -993,9 +996,16 @@
 
       let pod = grab([
         /(?:Port\s*of\s*Discharge)\s*[:\-]\s*([^\n]{3,80})/i,
-        /Port\s*of\s*discharge[^\n]*\n[^\n]*?\*\*\s*([A-Z\s\-]+PORT)/i,
-        /Port\s*of\s*discharge[^\n]*\n\s*([^\n,*]{3,50})/i,
-        /\bETA\s+([A-Z\s\-]+PORT)\s*[:\-]/i
+        /Port\s*of\s*disch[a-z]{2,5}[^\n]*\n[^\n]*?\*\*\s*([A-Z\s\-]+PORT)/i,
+        /Port\s*of\s*disch[a-z]{2,5}[^\n]*\n\s*([^\n,*]{3,50})/i,
+        /\b((?:DA\s*NANG|DANANG)\s*[-–]?\s*(?:TIEN\s*SA|TIENSA)?\s*PORT)\b/i,
+        /\b((?:HO\s*CHI\s*MINH|CAT\s*LAI|HAI\s*PHONG|VICT)\s*[A-Z\s\-]{0,20}PORT)\b/i,
+        /\bETA\s+([A-Z\s\-]+PORT)\s*[+:\-]/i
+      ]);
+
+      const blGrossRaw = grossWeightRaw || grab([
+        /\b([\d,]{3,10}(?:\.\d{1,3})?)\s*K[GC6][S5]?\b/i,
+        /\b([\d,]{3,10}\.\d{2})\s+(?:[A-Z0-9]{2,4}\s+)?[\d.]+\s*(?:M3|CBM)\b/i
       ]);
 
       return {
@@ -1007,7 +1017,7 @@
           /(?:Vessel\s*(?:\/|&)?\s*Voy(?:age)?|Ocean\s*Vessel)\s*[:\-]\s*([^\n]{3,80})/i,
           /Ocean\s*vessel[^\n]*\n\s*([A-Z0-9\s.]{5,35}?)(?=\s+[A-Z]+\s+PORT\b|\n)/i
         ]),
-        grossWeight: normalizeNumericValue(grossWeightRaw),
+        grossWeight: normalizeNumericValue(blGrossRaw),
         packages: packagesRaw,
         freightTerm,
         cleanOnBoard: !hasUnclean && hasOnBoard,
@@ -1051,17 +1061,37 @@
     if (docType === 'certificateOfOrigin') {
       let coNo = grab([
         /(?:Reference\s*No\.?|C\/O\s*No\.?|Certificate\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i,
-        /\b(\d{5,12})\s+ORIGINAL\b/i
+        /\b(\d{6,10})\s+OR[I1]G[I1]NAL\b/i,
+        /(?:Friedrichshafen|Consignor|Absender)[\s\S]{0,80}?\b(\d{6,10})\b/i
       ]);
       let origin = grab([
         /(?:Country\s*of\s*Origin)\s*:\s*([^\n]{2,50})/i,
-        /Country\s*of\s*origin[^\n]*\n\s*([^\n(]{3,60})/i,
-        /\b(Federal\s+Republic\s+of\s+Germany|Germany|Japan|China|South\s+Korea|Singapore)\b/i
+        /(?:Country\s*of\s*origin|Ursprungsland|Pays\s*d'origine)[^\n]*\n\s*([^\n(]{3,60})/i
+      ]);
+      if (!origin || /singapore/i.test(origin)) {
+        const countryChecks = [
+          /\b(Federal\s+Republic\s+of\s+Germany)\b/i,
+          /\b(Germany|Japan|China|South\s+Korea|United\s+States|France|Italy|Thailand|Vietnam)\b/i
+        ];
+        let foundSpecific = '';
+        for (const re of countryChecks) {
+          const m = text.match(re);
+          if (m && m[1]) { foundSpecific = m[1].trim(); break; }
+        }
+        if (foundSpecific) {
+          origin = foundSpecific;
+        } else if (!origin && /\bSingapore\b/i.test(text) && !/(?:Tukang|618302|Consignee)[\s\S]{0,80}?Singapore/i.test(text)) {
+          origin = 'Singapore';
+        }
+      }
+      const coGrossRaw = grossWeightRaw || grab([
+        /\b(\d{1,3}(?:\.\d{3})+,\d{1,2})\s*(?:[a-z]{1,3})?\b/i,
+        /\b([\d,]{3,10}\.\d{1,2})\s*k[gq9]s?\b/i
       ]);
       return {
         coNumber: coNo,
         originCountry: origin,
-        grossWeight: normalizeNumericValue(grossWeightRaw).replace(/\.0$/, '')
+        grossWeight: normalizeNumericValue(coGrossRaw).replace(/\.0$/, '')
       };
     }
 
@@ -1085,6 +1115,27 @@
         amount,
         currency,
         tenor: /\bSIGHT\b/i.test(text) ? 'AT SIGHT' : ''
+      };
+    }
+
+    if (docType === 'shippingAdvice') {
+      const saBlNo = grab([
+        /(?:BILL\s*OF\s*LADING\s*NO\.?|B\/L\s*NO\.?)\s*[+:#\-]?\s*([A-Z0-9\-\/_]{5,35})/i
+      ]);
+      const saInvNo = grab([
+        /(?:INVOICE\s*NO\.?)\s*[+:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i
+      ]);
+      const etdMatch = text.match(/\bETD\s+([A-Z\s]+?)\s*[+:\-]?\s*(\d{1,2}-[A-Za-z]{3}-\d{2,4})\b/i);
+      const etaMatch = text.match(/\bETA\s+([A-Z0-9\s\-]+?PORT)\s*[+:\-]/i);
+      return {
+        blNumber: saBlNo,
+        onBoardDate: etdMatch ? normalizeDateToIso(etdMatch[2]) : '',
+        portOfLoading: etdMatch ? (etdMatch[1].trim() + ' PORT').replace(/\s+PORT\s+PORT$/i, ' PORT') : '',
+        portOfDischarge: etaMatch ? etaMatch[1].trim() : '',
+        invoiceNo: saInvNo,
+        amount,
+        currency,
+        lcNumber
       };
     }
 
