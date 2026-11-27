@@ -150,6 +150,14 @@ SWIFT CODE: DEUTSGSGXXX
   assert(mt700.includes(':40E:UCP LATEST VERSION'));
 
   const printedMt700 = Engine.generateSwiftPrintedMT700(lcData);
+  assert(printedMt700.includes('ORIGINAL'));
+  assert(printedMt700.includes('Reference Number   LC2026VCB0088'));
+  assert(printedMt700.includes('Print No   1'));
+  assert(/MT ID\s*:\s*LCD\d{9}\s+Priority : N/.test(printedMt700));
+  assert(printedMt700.includes('Sender Bank   : BFTVVNVX018'));
+  assert(printedMt700.includes('Input Message : MT700         LC Full SWIFT'));
+  assert(printedMt700.includes('Sent To       : SMBCJPJT'));
+  assert(/MUR\s*:\s*LCD\d{9}VCBUSER\d{2}/.test(printedMt700));
   assert(printedMt700.includes('--------------------------- Message Header ---------------------------'));
   assert(printedMt700.includes('FIN 700 Issue of a Documentary Credit'));
   assert(printedMt700.includes('--------------------------- Message Text -----------------------------'));

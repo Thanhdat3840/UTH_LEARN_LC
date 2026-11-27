@@ -1042,7 +1042,36 @@
       65
     );
 
+    const now = new Date();
+    const mtId = 'LCD' + Math.floor(100000000 + Math.random() * 900000000);
+    const mur = mtId + (bank.code || 'VCB').toUpperCase() + 'USER' + Math.floor(10 + Math.random() * 90);
+    const issueDateStr = toMmDdYyyySlash(lcData.issueDate || now.toISOString().slice(0, 10));
+    const hrs24 = now.getHours();
+    const ampm = hrs24 >= 12 ? 'PM' : 'AM';
+    const hrs12 = pad2(hrs24 % 12 || 12);
+    const issueTimeStr = `${hrs12}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())} ${ampm}`;
+    const sentToLocation = receiverLocation.replace(/\n {11}/g, '\n                ');
+
     const out = [];
+    out.push('ORIGINAL');
+    out.push(`Reference Number   ${(lcData.lcNumber || '028314101600226').toUpperCase()}`);
+    out.push('Print No   1');
+    out.push(`Date ${issueDateStr}    Time ${issueTimeStr}`);
+    out.push('');
+    out.push(`To: ${(lcData.applicantName || 'APPLICANT COMPANY').toUpperCase()}`);
+    out.push('As instructed, we have issued our letter of credit for you with the');
+    out.push('following wording, please check the text immediately and contact us within 3');
+    out.push('working days from issuance date if you have any query.');
+    out.push('-------------------------------------------------------------------------------------------------------');
+    out.push(`MT ID         : ${mtId}              Priority : N`);
+    out.push(`Sender Bank   : ${bank.bic || 'BFTVVNVX018'}          ${bankEn.enName}`);
+    out.push(`                ${bankEn.addr1}, ${bankEn.addr2}`);
+    out.push('');
+    out.push('Input Message : MT700         LC Full SWIFT');
+    out.push(`Sent To       : ${receiverShortBic}             ${receiverName}`);
+    out.push(`                ${sentToLocation}`);
+    out.push(`MUR           : ${mur}`);
+    out.push('-------------------------------------------------------------------------------------------------------');
     out.push('--------------------------- Message Header ---------------------------');
     out.push('Swift Input:                FIN 700 Issue of a Documentary Credit');
     out.push(`Sender   : ${senderShortBic}`);
