@@ -1422,6 +1422,7 @@
 
       try {
         const map = {};
+        const ocrDebugLines = [];
         let shippingAdviceData = null;
         let arrivalNoticeData = null;
         for (let i = 0; i < stage5Queue.length; i++) {
@@ -1433,22 +1434,31 @@
             }
           });
           const docType = detectDocTypeByFilenameAndText(item.name, text);
+          let extractedSummary = '(Không có)';
           if (docType === 'shippingAdvice') {
-            shippingAdviceData = Object.assign({}, shippingAdviceData || {}, Parser.parseShippingDocText(text, 'shippingAdvice'));
+            const parsedSa = Parser.parseShippingDocText(text, 'shippingAdvice');
+            shippingAdviceData = Object.assign({}, shippingAdviceData || {}, parsedSa);
+            extractedSummary = Object.entries(parsedSa).filter(([_, v]) => v !== '' && v !== undefined && v !== null).map(([k, v]) => `${k}=${v}`).join(', ') || '(Trống)';
           } else if (docType === 'arrivalNotice') {
-            arrivalNoticeData = Object.assign({}, arrivalNoticeData || {}, Parser.parseShippingDocText(text, 'arrivalNotice'));
+            const parsedAn = Parser.parseShippingDocText(text, 'arrivalNotice');
+            arrivalNoticeData = Object.assign({}, arrivalNoticeData || {}, parsedAn);
+            extractedSummary = Object.entries(parsedAn).filter(([_, v]) => v !== '' && v !== undefined && v !== null).map(([k, v]) => `${k}=${v}`).join(', ') || '(Trống)';
           } else if (docType) {
             const parsedDoc = Parser.parseShippingDocText(text, docType);
             const prevDoc = map[docType] || {};
             const cleanedEntries = Object.fromEntries(
               Object.entries(parsedDoc).filter(([_, v]) => v !== '' && v !== undefined && v !== null)
             );
+            extractedSummary = Object.entries(cleanedEntries).map(([k, v]) => `${k}=${v}`).join(', ') || '(Trống)';
             const mergedDoc = Object.assign({}, prevDoc, cleanedEntries);
             if (docType === 'billOfLading' && prevDoc.cleanOnBoard === true && !parsedDoc.remarks) {
               mergedDoc.cleanOnBoard = true;
             }
             map[docType] = mergedDoc;
           }
+          ocrDebugLines.push(
+            `=== Trang #${i + 1} (${item.name}) -> Phân loại: ${docType || 'Bỏ qua'} | Trích xuất: ${extractedSummary} ===\n${String(text || '').trim().slice(0, 400)}`
+          );
         }
 
         // Bổ sung các trường còn trống trên B/L và Invoice từ Shipping Advice & Arrival Notice (không ghi đè dữ liệu gốc)
@@ -1475,8 +1485,22 @@
           }
         }
 
+        // Khôi phục dấu chấm thập phân bị OCR mất (VD: 438400 -> 4384.00 khi khớp đúng 100x với Packing List)
+        const blGw = map.billOfLading && map.billOfLading.grossWeight;
+        const plGw = map.packingList && map.packingList.grossWeight;
+        if (blGw && !String(blGw).includes('.') && String(blGw).endsWith('00') && plGw && Math.abs(Number(blGw) / 100 - Number(plGw)) < 0.01) {
+          map.billOfLading.grossWeight = (Number(blGw) / 100).toFixed(2);
+        }
+
         clearPresentedDocsDom();
         writePresentedDocsToDom(map);
+
+        const dbgBox = el('stage5OcrDebugBox');
+        const dbgContent = el('stage5OcrDebugContent');
+        if (dbgBox && dbgContent) {
+          dbgContent.textContent = ocrDebugLines.join('\n\n');
+          dbgBox.style.display = 'block';
+        }
 
         const coreDocKeys = ['invoice', 'billOfLading', 'packingList', 'draft', 'certificateOfOrigin', 'insurance'];
         const detectedCoreCount = coreDocKeys.filter(k => map[k] && Object.values(map[k]).some(v => v !== '' && v !== undefined && v !== null)).length;

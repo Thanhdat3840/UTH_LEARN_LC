@@ -894,16 +894,27 @@
 
   function normalizeNumericValue(rawStr) {
     if (!rawStr) return '';
-    let s = String(rawStr).trim();
-    // Định dạng Châu Âu: 13.146,00 hoặc 13.146,0 hoặc 48.410,00
-    if (/^\d{1,3}(\.\d{3})+,\d+$/.test(s)) {
+    let s = String(rawStr).trim().replace(/\s+/g, '').replace(/^[^0-9]+|[^0-9]+$/g, '');
+    if (!s) return '';
+    // Nhiều dấu chấm dạng 4.384.00 hoặc 13.146.0 (OCR đọc nhầm dấu phẩy thành dấu chấm)
+    if (/^\d{1,3}(\.\d{3})+\.\d{1,2}$/.test(s)) {
+      const parts = s.split('.');
+      const dec = parts.pop();
+      s = parts.join('') + '.' + dec;
+    } else if (/^\d{1,3}(,\d{3})+,\d{1,2}$/.test(s)) {
+      const parts = s.split(',');
+      const dec = parts.pop();
+      s = parts.join('') + '.' + dec;
+    } else if (/^\d{1,3}(\.\d{3})+,\d{1,3}$/.test(s)) {
       s = s.replace(/\./g, '').replace(',', '.');
     } else if (/^\d+,\d{1,2}$/.test(s)) {
       s = s.replace(',', '.');
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
     } else {
       s = s.replace(/,/g, '');
     }
-    return s;
+    return /^\d+(?:\.\d+)?$/.test(s) ? s : '';
   }
 
   function parseShippingDocText(rawText, docType) {
@@ -1004,10 +1015,11 @@
       ]);
 
       const blGrossRaw = grab([
-        /(?:Gross\s*Weight|G\.W\.?)\s*[:\-]\s*([\d,.]+)\s*(?:KGS?|MT)?/i,
-        /\b(\d{1,3}(?:,\d{3})+(?:\.\d{1,3})?)\s*K[GC6][S5]?\b/i,
-        /\b(\d{3,6}\.\d{1,3})\s*K[GC6][S5]?\b/i,
-        /\b([\d,]{3,10}\.\d{2})\s+(?:[A-Z0-9]{2,4}\s+)?[\d.]+\s*(?:M3|CBM)\b/i
+        /(?:Gross\s*Weight|G\.W\.?)\s*[:\-]\s*([\d,.\s]+)\s*(?:KGS?|MT)?/i,
+        /(?:^|[^\d.,])(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,3})?)\s*K[GC6][S5]?\b/i,
+        /(?:^|[^\d.,])(\d{3,6}[.,]\d{1,3})\s*K[GC6][S5]?\b/i,
+        /(?:^|[^\d.,])(\d{3,7})\s*K[GC6][S5]?\b/i,
+        /(?:^|[^\d.,])(\d{1,3}(?:[.,]\d{3})+[.,]\d{2}|\d{3,6}[.,]\d{2}|\d{5,6})\s+(?:[A-Z0-9]{1,5}\s+)?\d{1,3}[.,]?\d{2,3}\s*(?:M3|CBM)\b/i
       ]);
 
       return {
@@ -1063,8 +1075,8 @@
     if (docType === 'certificateOfOrigin') {
       let coNo = grab([
         /(?:Reference\s*No\.?|C\/O\s*No\.?|Certificate\s*No\.?)\s*[:#\-]?\s*([A-Z0-9\-\/_]{4,35})/i,
-        /\b(\d{6,10})\s+OR[I1]G[I1]NAL\b/i,
-        /(?:Friedrichshafen|Consignor|Absender)[\s\S]{0,90}?\b((?!618302)\d{6,10})\b/i
+        /\b((?!618302)\d{6,10})[:.,;\s]+OR[I1]G[I1]NAL\b/i,
+        /(?:Friedrichshafen|Consignor|Absender)[\s\S]{0,120}?\b((?!618302)\d{6,10})\b/i
       ]);
       let origin = grab([
         /(?:Country\s*of\s*Origin)\s*:\s*([^\n]{2,50})/i,
@@ -1086,10 +1098,13 @@
           origin = 'Singapore';
         }
       }
-      const coGrossRaw = grossWeightRaw || grab([
-        /\b(\d{1,3}(?:\.\d{3})+,\d{1,2})\b/,
-        /(?:Trestle|pallet)\s+([\d.,]{4,12})\s*(?:k[gq9]s?|[a-z]{1,2})?\b/i,
-        /\b([\d,]{3,10}\.\d{1,2})\s*k[gq9]s?\b/i
+      const coGrossRaw = grab([
+        /(?:Gross\s*Weight|G\.W\.?)\s*[:\-]\s*([\d,.\s]+)\s*(?:KGS?|MT)?/i,
+        /(?:^|[^\d.,])(\d{1,3}(?:[.\s]\d{3})+[.,]\d{1,2})\s*(?:k[gq9]s?|[a-z]{1,2})?\b/i,
+        /(?:^|[^\d.,])(\d{1,3}(?:,\d{3})+[.,]\d{1,2})\s*(?:k[gq9]s?|[a-z]{1,2})?\b/i,
+        /(?:^|[^\d.,])(\d{4,6}[.,]\d{1,2})\s*k[gq9]s?\b/i,
+        /(?:Trestle|pallet)\s+([\d.,\s]{4,14}?)(?=\s*(?:k[gq9]s?|\n|$))/i,
+        /(?:^|[^\d.,])(\d{1,3}(?:[.,]\d{3})+)\s*k[gq9]s?\b/i
       ]);
       return {
         coNumber: coNo,
