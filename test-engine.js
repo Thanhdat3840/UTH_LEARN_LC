@@ -154,7 +154,7 @@ SWIFT CODE: DEUTSGSGXXX
   assert(printedMt700.includes('Reference Number   LC2026VCB0088'));
   assert(printedMt700.includes('Print No   1'));
   assert(/MT ID\s*:\s*LCD\d{9}\s+Priority : N/.test(printedMt700));
-  assert(printedMt700.includes('Sender Bank   : BFTVVNVX018'));
+  assert(printedMt700.includes('Sender Bank   : BFTVVNVXXXX'));
   assert(printedMt700.includes('Input Message : MT700         LC Full SWIFT'));
   assert(printedMt700.includes('Sent To       : SMBCJPJT'));
   assert(/MUR\s*:\s*LCD\d{9}VCBUSER\d{2}/.test(printedMt700));
