@@ -1665,7 +1665,10 @@
           showToast('Chưa có file PDF mẫu cho ngân hàng này.');
           return;
         }
-        window.open(meta.pdfSample, '_blank', 'noopener');
+        const pdfUrl = (window.location.protocol === 'file:' && window.__STANDALONE_REMOTE_BASE__)
+          ? (window.__STANDALONE_REMOTE_BASE__ + meta.pdfSample)
+          : meta.pdfSample;
+        window.open(pdfUrl, '_blank', 'noopener');
       });
     }
     if (el('btnMt700ModePrinted')) {

@@ -326,6 +326,19 @@
       throw new Error('Thư viện nhận diện chữ OCR (Tesseract.js) chưa sẵn sàng.');
     }
     if (!cachedOcrWorkerPromise) {
+      if (typeof window.__STANDALONE_OCR_FACTORY__ === 'function') {
+        cachedOcrWorkerPromise = Promise.resolve()
+          .then(() => window.__STANDALONE_OCR_FACTORY__(m => {
+            if (currentOcrProgressCallback && m && m.status === 'recognizing text') {
+              currentOcrProgressCallback(Math.round((m.progress || 0) * 100));
+            }
+          }))
+          .catch(err => {
+            cachedOcrWorkerPromise = null;
+            throw normalizeErr(err, 'Không khởi tạo được bộ đọc OCR Offline trên trình duyệt');
+          });
+        return cachedOcrWorkerPromise;
+      }
       const workerUrl = new URL('vendor/tesseract/worker.min.js', window.location.href).href;
       const tesseractDirUrl = new URL('vendor/tesseract', window.location.href).href;
       cachedOcrWorkerPromise = Promise.resolve()
@@ -417,7 +430,7 @@
         }
       }
 
-      if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+      if (typeof window !== 'undefined' && window.location.protocol === 'file:' && typeof window.__STANDALONE_OCR_FACTORY__ !== 'function') {
         throw new Error('Trình duyệt chặn OCR khi mở trực tiếp bằng file://. Vui lòng mở ứng dụng qua http://127.0.0.1:3005 (chạy Mo_TradeFin_Chrome.bat) để sử dụng OCR 100% Offline.');
       }
 
