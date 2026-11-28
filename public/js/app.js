@@ -25,6 +25,7 @@
     contractParsed: {},
     lcData: {},
     issuedFlag: false,
+    stage3Completed: false,
     amendment: null,
     effectiveLC: null,
     settlementStatus: ''
@@ -103,9 +104,8 @@
         if (data.lcNumber) {
           appState.autoLcNumber = data.lcNumber;
         }
+        syncLcNumberDisplay();
         if (!appState.isBankView) {
-          node.value = '';
-          node.classList.remove('autofilled');
           continue;
         }
       }
@@ -147,6 +147,71 @@
     return base;
   }
 
+  const PENDING_LC_LABEL = 'Chưa cấp (Sau Bước 3)';
+  const PENDING_LC_SWIFT = '[CHUA CAP - CHO HOAN THANH BUOC 3]';
+
+  function isLcNumberIssued() {
+    return Boolean(appState.stage3Completed);
+  }
+
+  function getLcDataForPreview(baseLc) {
+    return isLcNumberIssued() ? baseLc : Object.assign({}, baseLc, { lcNumber: PENDING_LC_SWIFT });
+  }
+
+  function syncLcNumberDisplay() {
+    const lcInput = el('lcNumber');
+    if (!lcInput) return;
+    if (isLcNumberIssued()) {
+      lcInput.value = appState.autoLcNumber || '';
+    } else {
+      lcInput.value = '';
+      lcInput.placeholder = 'Ngân hàng tự cấp sau Bước 3';
+      lcInput.classList.remove('autofilled');
+    }
+  }
+
+  function updateStage3IssueBanner() {
+    const banner = el('stage3IssueBanner');
+    const statusText = el('stage3IssueStatusText');
+    const btnComplete = el('btnCompleteStage3');
+    if (!banner || !statusText || !btnComplete) return;
+
+    const eff = getEffectiveLC();
+    if (isLcNumberIssued()) {
+      banner.style.background = '#ecfdf5';
+      banner.style.borderColor = '#6ee7b7';
+      banner.style.color = '#065f46';
+      statusText.innerHTML = `✅ Đã gửi Đơn Mở L/C & Hoàn thành Bước 3 — Ngân hàng đã cấp Số L/C (:20:): <b>${escapeHtml(eff.lcNumber)}</b> và phát hành điện SWIFT MT700.`;
+      btnComplete.style.display = 'none';
+    } else {
+      banner.style.background = '#fffbeb';
+      banner.style.borderColor = '#fcd34d';
+      banner.style.color = '#92400e';
+      statusText.innerHTML = '⏳ <b>Chưa hoàn thành Bước 3:</b> Số L/C (<code>:20:</code>) chỉ được Ngân hàng phát hành cấp sau khi bạn kiểm tra Đơn Mở L/C và bấm xác nhận gửi đơn.';
+      btnComplete.style.display = 'inline-flex';
+    }
+  }
+
+  function completeStage3AndIssueLc(switchToMt700Tab) {
+    appState.stage3Completed = true;
+    appState.issuedFlag = true;
+    syncLcNumberDisplay();
+    updateSummaryStrip();
+    renderStage3Outputs();
+    if (switchToMt700Tab) {
+      const stage3Panel = el('stage-3');
+      if (stage3Panel) {
+        stage3Panel.querySelectorAll('.subtab-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.subtab === 'tab-swift-mt700');
+        });
+        stage3Panel.querySelectorAll('.subtab-pane').forEach(p => {
+          p.classList.toggle('active', p.id === 'tab-swift-mt700');
+        });
+      }
+    }
+    saveState();
+  }
+
   function gotoStage(stageNum) {
     const num = Number(stageNum);
     appState.currentStage = num;
@@ -169,6 +234,7 @@
     } else if (num === 5) {
       renderStage5Header();
     }
+    updateSummaryStrip();
     saveState();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -176,8 +242,22 @@
   function updateSummaryStrip() {
     const eff = getEffectiveLC();
     const fin = Engine.calculateFinancials(eff);
-    el('sumLcNumber').textContent = eff.lcNumber || '—';
-    el('sumStatus').textContent = appState.settlementStatus || (appState.amendment ? 'Đã tu chỉnh (MT707)' : (appState.issuedFlag ? 'Đã phát hành MT700' : 'Đang soạn thảo'));
+    const sumLcEl = el('sumLcNumber');
+    if (isLcNumberIssued()) {
+      sumLcEl.textContent = eff.lcNumber || '—';
+      sumLcEl.style.color = '';
+      sumLcEl.style.fontWeight = '';
+    } else {
+      sumLcEl.textContent = PENDING_LC_LABEL;
+      sumLcEl.style.color = 'var(--slate-400)';
+      sumLcEl.style.fontWeight = '600';
+    }
+    el('sumStatus').textContent = appState.settlementStatus
+      || (appState.amendment
+        ? 'Đã tu chỉnh (MT707)'
+        : (isLcNumberIssued()
+          ? 'Đã phát hành MT700'
+          : (appState.currentStage === 3 ? 'Chờ gửi Đơn mở L/C' : 'Đang soạn thảo')));
     el('sumAmount').textContent = eff.amount ? Engine.formatHumanAmount(eff.amount, eff.currency) : '—';
     const pol = (eff.portOfLoading || '').split(',')[0] || '—';
     const pod = (eff.portOfDischarge || '').split(',')[0] || '—';
@@ -539,7 +619,9 @@
     handlePaymentTenorSync();
     appState.amendment = null;
     appState.issuedFlag = false;
+    appState.stage3Completed = false;
     appState.settlementStatus = '';
+    syncLcNumberDisplay();
     updateSummaryStrip();
     renderFinancialsAndCompliance();
     saveState();
@@ -616,7 +698,7 @@
   function renderStage3Outputs() {
     const lcData = readLcFormFromDom();
     const mode = appState.mt700DisplayMode || 'printed';
-    renderMt700ByMode(lcData, mode, el('mt700Preview'));
+    renderMt700ByMode(getLcDataForPreview(lcData), mode, el('mt700Preview'));
     if (el('btnMt700ModePrinted')) el('btnMt700ModePrinted').classList.toggle('active', mode === 'printed');
     if (el('btnMt700ModeRaw')) el('btnMt700ModeRaw').classList.toggle('active', mode === 'raw');
 
@@ -627,6 +709,7 @@
       el('stage3BankBadge').textContent = `Mẫu: ${bank.code === 'OTHER' ? bank.name : meta.shortLabel} (${meta.formCode})`;
     }
     el('bankApplicationPreview').innerHTML = window.BankTemplates.renderBankApplicationHtml(lcData, fin, { isWordMode: false });
+    updateStage3IssueBanner();
   }
 
   function renderStage4() {
@@ -1107,12 +1190,11 @@
 
     const lcInput = el('lcNumber');
     if (lcInput) {
-      lcInput.value = '';
-      lcInput.placeholder = 'Ngân hàng tự cấp khi phát hành';
+      lcInput.placeholder = 'Ngân hàng tự cấp sau Bước 3';
       lcInput.readOnly = true;
       lcInput.disabled = true;
       lcInput.classList.add('input-locked-corporate');
-      lcInput.classList.remove('autofilled');
+      syncLcNumberDisplay();
     }
 
     const draweeGroup = el('formGroupDrawee');
@@ -1126,7 +1208,7 @@
     const modal = el('rawSwiftModal');
     let modalMt700Mode = 'printed';
     function updateModalMt700() {
-      const lc = readLcFormFromDom();
+      const lc = getLcDataForPreview(readLcFormFromDom());
       renderMt700ByMode(lc, modalMt700Mode, el('rawSwiftModalText'));
       if (el('btnModalMt700Printed')) el('btnModalMt700Printed').classList.toggle('active', modalMt700Mode === 'printed');
       if (el('btnModalMt700Raw')) el('btnModalMt700Raw').classList.toggle('active', modalMt700Mode === 'raw');
@@ -1197,7 +1279,13 @@
       btn.addEventListener('click', () => gotoStage(btn.dataset.stage));
     });
     document.querySelectorAll('[data-goto-stage]').forEach(btn => {
-      btn.addEventListener('click', () => gotoStage(btn.dataset.gotoStage));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.completeStage3 === 'true' && !isLcNumberIssued()) {
+          completeStage3AndIssueLc(false);
+          showToast(`Đã hoàn thành Bước 3! Ngân hàng đã cấp số L/C (:20:): ${readLcFormFromDom().lcNumber}`);
+        }
+        gotoStage(btn.dataset.gotoStage);
+      });
     });
 
     // Subtabs
@@ -1236,6 +1324,7 @@
           el('draweeBic').value = bank.shortBic + 'XXX';
           const cNoSuffix = (el('contractNo').value || '0088').replace(/[^A-Z0-9]/gi, '').slice(-4).padStart(4, '0');
           appState.autoLcNumber = `LC2026${el('issuingBankCode').value || 'VCB'}${cNoSuffix}`.toUpperCase();
+          syncLcNumberDisplay();
           if (key === 'issuingBankCode') {
             showToast(`Đã chọn mẫu biểu Ngân hàng: ${bank.name}`);
           }
@@ -1624,13 +1713,24 @@
     el('btnProceedToStage3').addEventListener('click', () => {
       const res = Engine.validateLCApplication(readLcFormFromDom(), appState.contractParsed);
       if (!res.summary.canIssue) {
-        showToast(`Đang có ${res.summary.errors} Lỗi Nghiêm trọng (ERROR) ở cột 2C! Hãy xử lý trước khi phát hành MT700.`);
+        showToast(`Đang có ${res.summary.errors} Lỗi Nghiêm trọng (ERROR) ở cột 2C! Hãy xử lý trước khi lập Đơn Mở L/C.`);
         return;
       }
-      appState.issuedFlag = true;
       gotoStage(3);
-      showToast('Hồ sơ hợp lệ! Đã phát hành Đơn Mở L/C và Bức điện SWIFT MT700.');
+      showToast('Hồ sơ hợp lệ! Vui lòng kiểm tra Đơn Mở L/C ở Bước 3 và bấm "Gửi Đơn Mở L/C" để Ngân hàng cấp số L/C.');
     });
+
+    if (el('btnCompleteStage3')) {
+      el('btnCompleteStage3').addEventListener('click', () => {
+        const res = Engine.validateLCApplication(readLcFormFromDom(), appState.contractParsed);
+        if (!res.summary.canIssue) {
+          showToast(`Đang có ${res.summary.errors} Lỗi Nghiêm trọng ở Bước 2! Hãy quay lại xử lý trước khi gửi Đơn Mở L/C.`);
+          return;
+        }
+        completeStage3AndIssueLc(true);
+        showToast(`Đã gửi Đơn Mở L/C & Hoàn thành Bước 3! Ngân hàng đã cấp Số L/C (:20:): ${readLcFormFromDom().lcNumber}`);
+      });
+    }
 
     // Stage 3 actions
     if (el('btnOpenOriginalBankPdf')) {
@@ -1657,26 +1757,28 @@
       });
     }
     el('btnDownloadMt700').addEventListener('click', () => {
-      const lc = readLcFormFromDom();
+      const lc = getLcDataForPreview(readLcFormFromDom());
       const mode = appState.mt700DisplayMode || 'printed';
       const content = mode === 'raw' ? Engine.generateSwiftMT700(lc) : Engine.generateSwiftPrintedMT700(lc);
       const suffix = mode === 'raw' ? 'MT700_RAW' : 'FIN700_PRINTED';
-      downloadTextFile(`${lc.lcNumber || 'SWIFT'}_${suffix}.txt`, content);
+      const filePrefix = isLcNumberIssued() ? lc.lcNumber : 'DRAFT_CHUA_CAP_SO_LC';
+      downloadTextFile(`${filePrefix}_${suffix}.txt`, content);
     });
     el('btnCopyMt700').addEventListener('click', async () => {
       await navigator.clipboard.writeText(el('mt700Preview').textContent);
       showToast('Đã copy toàn bộ bức điện SWIFT MT700 vào Clipboard.');
     });
     el('btnDownloadBankAppWord').addEventListener('click', () => {
-      const lc = readLcFormFromDom();
-      const fin = Engine.calculateFinancials(lc);
-      const wordHtml = window.BankTemplates.buildWordDocumentHtml(lc, fin);
+      const baseLc = readLcFormFromDom();
+      const lcForWord = isLcNumberIssued() ? baseLc : Object.assign({}, baseLc, { lcNumber: 'DRAFT' });
+      const fin = Engine.calculateFinancials(baseLc);
+      const wordHtml = window.BankTemplates.buildWordDocumentHtml(lcForWord, fin);
       const blob = new Blob(['\ufeff', wordHtml], { type: 'application/msword;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const bankCode = lc.issuingBankCode || 'VCB';
-      a.download = `Don_De_Nghi_Mo_LC_${bankCode}_${lc.lcNumber || 'DRAFT'}.doc`;
+      const bankCode = baseLc.issuingBankCode || 'VCB';
+      a.download = `Don_De_Nghi_Mo_LC_${bankCode}_${isLcNumberIssued() ? baseLc.lcNumber : 'DRAFT'}.doc`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1804,6 +1906,12 @@
           currentRole: 'corporate',
           isBankView: false
         });
+        if (parsed.stage3Completed === undefined) {
+          appState.stage3Completed = Boolean(parsed.issuedFlag && Number(parsed.currentStage || 1) >= 4);
+        } else {
+          appState.stage3Completed = Boolean(parsed.stage3Completed);
+        }
+        appState.issuedFlag = appState.stage3Completed;
         writeLcFormToDom(appState.lcData || {});
         applyCorporateRoleUI();
         toggleCustomBankFields();
@@ -1812,6 +1920,7 @@
           el('rawContractInput').value = appState.contractRawText;
           renderHighlightedContract(appState.contractRawText, appState.contractParsed || {});
         }
+        syncLcNumberDisplay();
         updateSummaryStrip();
         gotoStage(appState.currentStage || 1);
         showToast('Đã khôi phục toàn bộ hồ sơ L/C từ file JSON.');
@@ -1857,6 +1966,12 @@
             currentRole: 'corporate',
             isBankView: false
           });
+          if (parsed.stage3Completed === undefined) {
+            appState.stage3Completed = Boolean(parsed.issuedFlag && Number(parsed.currentStage || 1) >= 4);
+          } else {
+            appState.stage3Completed = Boolean(parsed.stage3Completed);
+          }
+          appState.issuedFlag = appState.stage3Completed;
           writeLcFormToDom(appState.lcData);
           applyCorporateRoleUI();
           toggleCustomBankFields();
@@ -1876,6 +1991,7 @@
     }
 
     applyCorporateRoleUI();
+    syncLcNumberDisplay();
     validateTimelineDates();
     updateSummaryStrip();
     gotoStage(appState.currentStage || 1);

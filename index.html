@@ -75,7 +75,7 @@
     <section class="lc-summary-strip" id="lcSummaryStrip">
       <div class="summary-tile">
         <div class="label">Số L/C (:20:)</div>
-        <div class="val" id="sumLcNumber">—</div>
+        <div class="val" id="sumLcNumber">Chưa cấp (Sau Bước 3)</div>
       </div>
       <div class="summary-tile">
         <div class="label">Trạng thái Hồ sơ</div>
@@ -243,7 +243,7 @@
                     <span class="tooltip-wrap" data-tooltip=":20:"><span class="tooltip-icon">?</span><span class="tooltip-content"></span></span>
                   </span>
                 </label>
-                <input type="text" id="lcNumber" value="" placeholder="Ngân hàng tự cấp khi phát hành" readonly disabled class="input-locked-corporate" />
+                <input type="text" id="lcNumber" value="" placeholder="Ngân hàng tự cấp sau Bước 3" readonly disabled class="input-locked-corporate" />
                 <div class="charset-warning-box" id="warnCharset_lcNumber"></div>
               </div>
               <div class="form-group">
@@ -664,7 +664,7 @@
 
       <div class="stage-footer">
         <button type="button" class="btn btn-outline" data-goto-stage="1">← Quay lại Giai đoạn 1</button>
-        <button type="button" class="btn btn-navy" id="btnProceedToStage3">Xác nhận & Phát hành Hồ sơ Mở L/C (Giai đoạn 3) →</button>
+        <button type="button" class="btn btn-navy" id="btnProceedToStage3">Xác nhận & Lập Đơn Mở L/C (Giai đoạn 3) →</button>
       </div>
     </section>
 
@@ -685,12 +685,21 @@
           </div>
         </div>
         <div class="card-body">
-          <div class="subtabs">
-            <button type="button" class="subtab-btn active" data-subtab="tab-swift-mt700">Bức điện chuẩn SWIFT MT700</button>
-            <button type="button" class="subtab-btn" data-subtab="tab-bank-app">Đơn Đề nghị Mở L/C (Mẫu Ngân hàng VN)</button>
+          <div id="stage3IssueBanner" class="no-print" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; border-radius:8px; margin-bottom:14px; background:#fffbeb; border:1px solid #fcd34d; color:#92400e;">
+            <div id="stage3IssueStatusText" style="font-size:12.5px; line-height:1.45;">⏳ <b>Chưa hoàn thành Bước 3:</b> Số L/C (<code>:20:</code>) chỉ được Ngân hàng phát hành cấp sau khi bạn kiểm tra Đơn Mở L/C và bấm xác nhận gửi đơn.</div>
+            <button type="button" class="btn btn-success btn-sm" id="btnCompleteStage3">📨 Gửi Đơn Mở L/C & Hoàn thành Bước 3 (Cấp số L/C)</button>
           </div>
 
-          <div class="subtab-pane active" id="tab-swift-mt700">
+          <div class="subtabs">
+            <button type="button" class="subtab-btn active" data-subtab="tab-bank-app">Đơn Đề nghị Mở L/C (Mẫu Ngân hàng VN)</button>
+            <button type="button" class="subtab-btn" data-subtab="tab-swift-mt700">Bức điện chuẩn SWIFT MT700</button>
+          </div>
+
+          <div class="subtab-pane active" id="tab-bank-app">
+            <div class="bank-form-a4" id="bankApplicationPreview"></div>
+          </div>
+
+          <div class="subtab-pane" id="tab-swift-mt700">
             <div class="mt700-format-bar no-print">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span style="font-size:12.5px; font-weight:700; color:var(--slate-700);">Chế độ hiển thị & in ấn MT700:</span>
@@ -703,18 +712,14 @@
             </div>
             <div class="swift-paper-a4" id="mt700Preview"></div>
           </div>
-
-          <div class="subtab-pane" id="tab-bank-app">
-            <div class="bank-form-a4" id="bankApplicationPreview"></div>
-          </div>
         </div>
       </div>
 
       <div class="stage-footer">
         <button type="button" class="btn btn-outline" data-goto-stage="2">← Quay lại Chỉnh sửa</button>
         <div style="display:flex; gap:8px;">
-          <button type="button" class="btn btn-outline" data-goto-stage="4">Xử lý Tu chỉnh MT707 / Bảo lãnh nhận hàng →</button>
-          <button type="button" class="btn btn-primary" data-goto-stage="5">Đi thẳng tới Giai đoạn 5: Soi Bộ chứng từ Hàng về →</button>
+          <button type="button" class="btn btn-outline" id="btnStage3To4" data-goto-stage="4" data-complete-stage3="true">Hoàn thành Bước 3 & Sang Tu chỉnh MT707 / Bảo lãnh →</button>
+          <button type="button" class="btn btn-primary" id="btnStage3To5" data-goto-stage="5" data-complete-stage3="true">Hoàn thành Bước 3 & Soi Bộ chứng từ (Giai đoạn 5) →</button>
         </div>
       </div>
     </section>
@@ -1099,10 +1104,10 @@
     </div>
   </div>
 
-  <script src="js/ucp600-engine.js?v=20261127_stage5_v4"></script>
-  <script src="js/bank-logos.js?v=20261127_stage5_v4"></script>
-  <script src="js/bank-templates.js?v=20261127_stage5_v4"></script>
-  <script src="js/docx-pdf-parser.js?v=20261127_stage5_v4"></script>
-  <script src="js/app.js?v=20261127_stage5_v4"></script>
+  <script src="js/ucp600-engine.js?v=20261128_lcno_v5"></script>
+  <script src="js/bank-logos.js?v=20261128_lcno_v5"></script>
+  <script src="js/bank-templates.js?v=20261128_lcno_v5"></script>
+  <script src="js/docx-pdf-parser.js?v=20261128_lcno_v5"></script>
+  <script src="js/app.js?v=20261128_lcno_v5"></script>
 </body>
 </html>
