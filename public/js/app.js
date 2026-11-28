@@ -1691,24 +1691,6 @@
     el('btnRegenerateClauses').addEventListener('click', regenerateClausesFromForm);
     el('btnAutoClauses2').addEventListener('click', regenerateClausesFromForm);
 
-    // Quick Clause Chips
-    document.querySelectorAll('[data-add-46a]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const ta = el('field46A');
-        ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + btn.dataset.add46a;
-        renderFinancialsAndCompliance();
-        saveState();
-      });
-    });
-    document.querySelectorAll('[data-add-47a]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const ta = el('field47A');
-        ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + btn.dataset.add47a;
-        renderFinancialsAndCompliance();
-        saveState();
-      });
-    });
-
     // Proceed from Stage 2 -> Stage 3
     el('btnProceedToStage3').addEventListener('click', () => {
       const res = Engine.validateLCApplication(readLcFormFromDom(), appState.contractParsed);
